@@ -1,0 +1,24 @@
+{
+  "name": "api-driver",
+  "version": "0.0.1",
+  "description": "a concise way to string together and test JSON API calls",
+  "keywords": [
+    "http",
+    "request",
+    "test"
+  ],
+  "main": "drive.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nomic/api-driver.git"
+  },
+  "author": "Aaron Boyd",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nomic/api-driver/issues"
+  },
+  "homepage": "https://github.com/nomic/api-driver"
+}
