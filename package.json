@@ -4,10 +4,11 @@
   "description": "a concise way to string together and test JSON API calls",
   "keywords": [
     "http",
-    "request",
-    "test"
+    "testing",
+    "json",
+    "api"
   ],
-  "main": "drive.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -20,5 +21,10 @@
   "bugs": {
     "url": "https://github.com/nomic/api-driver/issues"
   },
-  "homepage": "https://github.com/nomic/api-driver"
+  "homepage": "https://github.com/nomic/api-driver",
+  "dependencies": {
+    "request": "2.26.0",
+    "q": "0.9.6",
+    "underscore": "1.5.1"
+  }
 }
