@@ -10,24 +10,6 @@ var request = require("request"),
     url = require("url"),
     zlib = require("zlib");
 
-var config = {
-  requests: {
-    headers : {"Content-Type" : "application/json" }
-  }
-};
-
-exports.config = function(opts) {
-  opts = _.clone(opts);
-  if (opts.headers) {
-    _.extend(config.requests.headers, opts.headers);
-    delete opts.headers;
-  }
-  if (opts.endpoint) {
-    _.extend(config.requests, url.parse(opts.endpoint));
-    delete opts.endpoint;
-  }
-  _.extend(config, opts);
-};
 
 var trace = function() {
   if (process.env.DRIVER_TRACE) {
@@ -101,6 +83,14 @@ var makeResult = function(response, url, jar, profile, callback) {
   );
 };
 
+var reqConfig = function(config) {
+  var conf = {
+    headers: config.requestHeaders,
+  };
+  _.extend(conf, url.parse(config.requestEndpoint));
+  return conf;
+};
+
 var doRequest = function(cookieJar, req, config) {
   trace("doing request", req);
 
@@ -154,7 +144,7 @@ var doRequest = function(cookieJar, req, config) {
 };
 
 var doUpload = function(cookieJar, req, config) {
-  var reqconf = config.requests;
+  var reqconf = reqConfig(config);
 
   var path = (reqconf.path || "/") + req.path;
   var headers = req.headers || {};
@@ -339,7 +329,10 @@ var Driver = function() {
   this._nullScribing();
   this._expectationsPassed = 0;
   this._expectationsFailed = 0;
-  this._delay = 0;
+  this._config = {
+    requestHeaders : {"Content-Type" : "application/json" },
+    delay: 0
+  };
   bindExtensions(this, driverExtensions);
 
   return this;
@@ -500,7 +493,7 @@ assertion_commands.expect = function() {
 var control_commands = {};
 
 control_commands.config = function(opts) {
-  this._delay = opts.delay || this._delay;
+  this._config = _.extend(_.clone(this._config), opts);
   return this;
 };
 
@@ -711,7 +704,14 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     expectations: [],
     log: false,
   };
-//>>>  console.log("handle request", reqTemplate);
+  if (that._config.defaultExpectation) {
+    var defaultExpectation = {
+      stack: new Error().stack,
+      expected: {
+        body: that._config.defaultExpectation
+      }
+    };
+  }
 
   return Q.all([reqPromise, resolveRequestClauses(reqClauses), that._waiting])
   .spread(function(req, reqClauses) {
@@ -719,13 +719,11 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
 
     var request = function() {
       if (req.method === "upload") {
-        return doUpload(actor.jar, req, config);
+        return doUpload(actor.jar, req, that.config);
       }
-      return doRequest(actor.jar, req, config.requests);
+      return doRequest(actor.jar, req, reqConfig(that._config));
     };
 
-    //>>> console.log("UNTILS", reqClauses.untils);
-    //>>> console.log("EXPECTS", reqClauses.expectations);
     var resPromise = reqClauses.untils.length > 0
                      ? doUntil(request, reqClauses.untils, 10, 10000)
                      : request();
@@ -743,7 +741,12 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     }
 
     var onExpectations = resPromise.then( function(result) {
-      return applyExpectations(result, reqClauses.expectations);
+      if (reqClauses.expectations.length > 0) {
+        return applyExpectations(result, reqClauses.expectations);
+      }
+      if (defaultExpectation) {
+        return applyExpectations(result, [defaultExpectation]);
+      }
     });
 
     scribeRequest(actor.alias, req, onExpectations, reqTemplate);
