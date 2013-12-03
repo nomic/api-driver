@@ -719,7 +719,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
 
     var request = function() {
       if (req.method === "upload") {
-        return doUpload(actor.jar, req, that.config);
+        return doUpload(actor.jar, req, that._config);
       }
       return doRequest(actor.jar, req, reqConfig(that._config));
     };
