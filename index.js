@@ -36,6 +36,13 @@ var trace = function() {
 };
 
 
+var logMessage = function(msg) {
+  console.log("log:");
+  console.log("vvvvvvvvv");
+  console.log(msg);
+  console.log("^^^^^^^^^");
+};
+
 var decode = function(data, encoding, callback) {
   if (encoding === 'gzip') {
     zlib.gunzip(data, function(err, decoded) {
@@ -188,6 +195,7 @@ var doUpload = function(cookieJar, req, config) {
 //
 
 var doUntil = function(fn, expectations, delay, timeout) {
+  //>>> console.log("DO UNTIL", expectations);
 
   // Montior time spent to compare against timeout
   var start = new Date().getTime();
@@ -257,6 +265,27 @@ var expect = function(resultPromise, expectation, stash, stack) {
     trace("expectation:", actual, expectation_);
     expector.expect(actual, expectation_, stack);
     return actual;
+  });
+};
+
+var applyExpectations = function(result, expectations) {
+  _.each(expectations, function(expectation) {
+    expector.expect(result, expectation.expected, expectation.stack);
+  });
+  return result;
+};
+
+var resolveRequestClauses = function(requestClauses) {
+  var resolved = {
+    log: requestClauses.log
+  };
+  return Q.all([
+    Q.all(requestClauses.untils),
+    Q.all(requestClauses.expectations)
+  ]).spread( function(untils, expectations) {
+    resolved.untils = untils;
+    resolved.expectations = expectations;
+    return resolved;
   });
 };
 
@@ -405,6 +434,7 @@ assertion_commands.ok = function() {
 };
 
 
+
 assertion_commands.until = function() {
   var args =_.toArray(arguments);
   trace("driver.until", args);
@@ -412,38 +442,67 @@ assertion_commands.until = function() {
   var stack = new Error().stack;
   var expectation = argsToExpectation(args);
 
-  this._untilClauses.push({
-    stack: stack,
-    expected: expectation
-  });
+  this._requestClauses.untils.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
 
   return this;
 };
-
 
 assertion_commands.expect = function() {
   var args =_.toArray(arguments);
   trace("driver.expect", args);
 
-  var that = this;
-  var resultPromise = expect( this._promises.pop(),
-                              argsToExpectation(args),
-                              this._stash,
-                              new Error().stack);
+  var stack = new Error().stack;
+  var expectation = argsToExpectation(args);
 
-  resultPromise
-  .then(function() {
-    that._expectationsPassed += 1;
-  }, function() {
-    that._expectationsFailed += 1;
-  });
+  this._requestClauses.expectations.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
 
-  that._promises.push(resultPromise);
   return this;
 };
 
+// assertion_commands.expect = function() {
+//   var args =_.toArray(arguments);
+//   trace("driver.expect", args);
+
+//   var that = this;
+//   if this._lastPromise
+//   var resultPromise = expect( this._promises.pop(),
+//                               argsToExpectation(args),
+//                               this._stash,
+//                               new Error().stack);
+
+//   .then(function() {
+//     that._expectationsPassed += 1;
+//   }, function() {
+//     that._expectationsFailed += 1;
+//   });
+
+//   that._promises.push(resultPromise);
+//   return this;
+// };
+
 
 var control_commands = {};
+
+control_commands.config = function(opts) {
+  this._delay = opts.delay || this._delay;
+  return this;
+};
 
 control_commands.stash = function(key /*, [stashKeys...], [fn | value]*/) {
   trace("stash:", key);
@@ -567,25 +626,21 @@ control_commands.on = function(emitter, evt, fn) {
 var instrument_commands = {};
 
 instrument_commands.log = function(stashKey) {
-  var logMessage = function(msg) {
-    console.log("log:");
-    console.log("vvvvvvvvv");
-    console.log(msg);
-    console.log("^^^^^^^^^");
-  };
 
   if (stashKey === undefined) {
-    this._lastPromise().then( function(data) {
-      if (data) {
-        // Too much junk in result.response
-        data = _.clone(data);
-        delete data.response;
-        logMessage(util.inspect(data, true, null, true));
-      }
-    }, function(err) {
-        logMessage(err);
-      }
-    );
+    this._currentRequest.log = true;
+
+    // this._lastPromise().then( function(data) {
+    //   if (data) {
+    //     // Too much junk in result.response
+    //     data = _.clone(data);
+    //     delete data.response;
+    //     logMessage(util.inspect(data, true, null, true));
+    //   }
+    // }, function(err) {
+    //     logMessage(err);
+    //   }
+    // );
     return this;
   }
 
@@ -624,11 +679,6 @@ _.extend(
   instrument_commands
 );
 
-
-Driver.prototype.config = function(opts) {
-  this._delay = opts.delay || this._delay;
-};
-
  //
  // Helper functions for handling http reequests
  //
@@ -637,7 +687,7 @@ Driver.prototype._handleRequest = function(req) {
   trace("driver._handleRequest", req);
   if (this._delay > 0) {
     this.wait(this._delay);
-  };
+  }
 
   var subbingPath = this._stash.substitutePath(req.path);
   var subbingRest = this._stash.substitute(_.omit(req, "path"));
@@ -655,39 +705,69 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
   var actor = that._active;
   var scribeRequest = that._scribe.deferredRequest();
 
-  // until clauses will be filled before request promises start
-  // getting resolved
-  var untilClauses = that._untilClauses = [];
+  // Recording clauses for the new request.
+  var reqClauses = that._requestClauses = {
+    untils: [],
+    expectations: [],
+    log: false,
+  };
+//>>>  console.log("handle request", reqTemplate);
 
-  return Q.all([reqPromise, that._waiting])
-  .spread(function(req) {
+  return Q.all([reqPromise, resolveRequestClauses(reqClauses), that._waiting])
+  .spread(function(req, reqClauses) {
     trace("done waiting:", req.path);
 
-    return subUntilClauses(untilClauses, that._stash)
-    .then( function(untils) {
-      trace("untils", untils.length);
+    var request = function() {
+      if (req.method === "upload") {
+        return doUpload(actor.jar, req, config);
+      }
+      return doRequest(actor.jar, req, config.requests);
+    };
 
-      var request = function() {
-        if (req.method === "upload") {
-          return doUpload(actor.jar, req, config);
+    //>>> console.log("UNTILS", reqClauses.untils);
+    //>>> console.log("EXPECTS", reqClauses.expectations);
+    var resPromise = reqClauses.untils.length > 0
+                     ? doUntil(request, reqClauses.untils, 10, 10000)
+                     : request();
+
+    if (reqClauses.log) {
+      resPromise.then(function(result) {
+        // Too much junk in result.response
+        result = _.clone(result);
+        delete result.response;
+        logMessage(util.inspect(result, true, null, true));
+      }, function(err) {
+          logMessage(err);
         }
-        return doRequest(actor.jar, req, config.requests);
-      };
+      );
+    }
 
-      var resPromise = untils.length > 0
-                       ? doUntil(request, untils, 10, 10000)
-                       : request();
-      scribeRequest(actor.alias, req, resPromise, reqTemplate);
-      resPromise.then(function() {
-          that._expectationsPassed += untils.length;
-        }, function(err) {
-          if (err instanceof expector.ExpectationError) {
-            that._expectationsFailed += 1;
-          }
-        });
-      return resPromise;
+    var onExpectations = resPromise.then( function(result) {
+      return applyExpectations(result, reqClauses.expectations);
     });
+
+    scribeRequest(actor.alias, req, onExpectations, reqTemplate);
+
+    onExpectations.then(function() {
+      that._expectationsPassed += reqClauses.untils.length;
+      that._expectationsPassed += reqClauses.expectations.length;
+    }, function(err) {
+      if (err instanceof expector.ExpectationError) {
+        that._expectationsFailed += 1;
+      }
+    });
+
+    return onExpectations;
   });
+
+};
+
+// A quick way to assert that the request didn't end in error.  Usefult for checking
+// calls that are needed for your test flow but not actually the focus of your test.
+Driver.prototype._defaultExpectation = function(fn) {
+  this.expect(fn);
+  this._lastPromise()._isDefaultExpecation = true;
+  return this;
 };
 
 
@@ -782,7 +862,7 @@ var api = (function() {
   self.request = function() {
     if (this._delay > 0) {
       this.wait(this._delay);
-    };
+    }
 
     var name, description, reqBuilderFn;  //expected args; description is optional
     var args = _.toArray(arguments);
