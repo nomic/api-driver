@@ -249,15 +249,6 @@ var argsToExpectation = function(args) {
   return expected;
 };
 
-var expect = function(resultPromise, expectation, stash, stack) {
-  return Q.all([resultPromise, stash.substitute(expectation)])
-  .spread(function(actual, expectation_) {
-    trace("expectation:", actual, expectation_);
-    expector.expect(actual, expectation_, stack);
-    return actual;
-  });
-};
-
 var applyExpectations = function(result, expectations) {
   _.each(expectations, function(expectation) {
     expector.expect(result, expectation.expected, expectation.stack);
