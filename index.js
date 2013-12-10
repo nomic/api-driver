@@ -184,24 +184,17 @@ var doUpload = function(cookieJar, req, config) {
 // if the until times out.
 //
 
-var doUntil = function(fn, expectations, delay, timeout) {
+var doUntil = function(fn, expectations, delay, timeout, negate) {
   //>>> console.log("DO UNTIL", expectations);
 
   // Montior time spent to compare against timeout
   var start = new Date().getTime();
 
-  return fn()
-  .then( function(result) {
-    _.each(expectations, function(exp) {
-      expector.expect(result, exp.expected, exp.stack);
-    });
+  var success = function(result) {
     return result;
-  })
-  .then(function(result) {
-    // No expectation errors.  We're done.
-    return result;
+  };
 
-  }, function(err) {
+  var next = function(err) {
     // One of the expectations failed.  Calculate remaining
     // time.
     var elapsed = new Date().getTime() - start;
@@ -209,15 +202,41 @@ var doUntil = function(fn, expectations, delay, timeout) {
 
     // Out of time -- reject
     if (timeout < 0) {
-      return Q.reject(err);
+      if (negate) {
+        return null;
+      } else {
+        return Q.reject(err);
+      }
     }
 
     //Not out of time, so let's delay and then try again, with
     //the updated timeout.
     return Q.delay(delay).then(function() {
-      return doUntil(fn, expectations, Math.min(delay*delay, 1000), timeout);
+      return doUntil(fn, expectations, Math.min(delay*delay, 1000), timeout, negate);
     });
-  });
+  };
+
+  return fn()
+  .then( function(result) {
+    var succeeded = 0;
+    for (var i = 0; i < expectations.length; i++) {
+      var exp = expectations[i];
+      try {
+        expector.expect(result, exp.expected, exp.stack);
+      } catch (e) {
+        if (negate) {
+          continue;
+        } else {
+          return next(e);
+        }
+      }
+      if (negate) {
+        return Q.reject(expector.fail('One or more expectations succeeded which should not have', 'Predicate Failure', exp.stack));
+      }
+    }
+    return negate ? next() : result;
+  })
+  .then(success);
 };
 
 
@@ -271,9 +290,11 @@ var resolveRequestClauses = function(requestClauses) {
   };
   return Q.all([
     Q.all(requestClauses.untils),
+    Q.all(requestClauses.nevers),
     Q.all(requestClauses.expectations)
-  ]).spread( function(untils, expectations) {
+  ]).spread( function(untils, nevers, expectations) {
     resolved.untils = untils;
+    resolved.nevers = nevers;
     resolved.expectations = expectations;
     return resolved;
   });
@@ -436,6 +457,27 @@ assertion_commands.until = function() {
   var expectation = argsToExpectation(args);
 
   this._requestClauses.untils.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
+
+  return this;
+};
+
+
+assertion_commands.never = function() {
+  var args =_.toArray(arguments);
+  trace("driver.never", args);
+
+  var stack = new Error().stack;
+  var expectation = argsToExpectation(args);
+
+  this._requestClauses.nevers.push(
     this._stash.substitute(expectation)
     .then( function(exp) {
       return {
@@ -701,6 +743,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
   // Recording clauses for the new request.
   var reqClauses = that._requestClauses = {
     untils: [],
+    nevers: [],
     expectations: [],
     log: false,
   };
@@ -727,6 +770,14 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     var resPromise = reqClauses.untils.length > 0
                      ? doUntil(request, reqClauses.untils, 10, 10000)
                      : request();
+
+    if (reqClauses.nevers.length > 0) {
+      resPromise = resPromise.then(function(result) {
+        return doUntil(request, reqClauses.nevers, 10, 10000, true).then(function() {
+          return result;
+        });
+      });
+    }
 
     if (reqClauses.log) {
       resPromise.then(function(result) {
