@@ -277,39 +277,6 @@ var Actor = function(alias) {
   this.jar = request.jar();
 };
 
-
-var driverExtensions = {};
-
-/*
- *  Attatch the api methods to the driver instance;
- */
-var bindExtensions = function(obj, extensions) {
-  var _bindExtension = function(extension) {
-    if (_.isFunction(extension)) {
-      return function() {
-        return extension.apply(obj, _.toArray(arguments));
-      };
-    }
-    if (_.isObject(extension)) {
-      var space = {};
-      _.each(extension, function(val, key) {
-        if (key.slice(0,2) !== "__") space[key] = _bindExtension(val);
-      });
-      return space;
-    }
-
-    // extensions should be an object graph with functions
-    // for leaves;
-    assert(false);
-  };
-
-  _.each(extensions, function(val, key) {
-    // avoid __name
-    if (key.slice(0,2) !== "__") obj[key] = _bindExtension(val);
-  });
-
-};
-
 var Driver = function() {
   this._resetPromises();
 
@@ -760,7 +727,6 @@ Driver.prototype._consumeResults = function() {
   return results;
 };
 
-
 Driver.prototype._nullScribing = function() {
   var devnullScribe = function() {
     var self = {};
@@ -770,6 +736,51 @@ Driver.prototype._nullScribing = function() {
   };
 
   this._scribe = devnullScribe();
+};
+
+
+
+
+//
+//
+// TO BE REMOVED.
+//
+// The stuff below here hasn't proven terribly useful and isn't
+// worth the maintenance.
+//
+//
+
+
+var driverExtensions = {};
+
+/*
+ *  Attatch the api methods to the driver instance;
+ */
+var bindExtensions = function(obj, extensions) {
+  var _bindExtension = function(extension) {
+    if (_.isFunction(extension)) {
+      return function() {
+        return extension.apply(obj, _.toArray(arguments));
+      };
+    }
+    if (_.isObject(extension)) {
+      var space = {};
+      _.each(extension, function(val, key) {
+        if (key.slice(0,2) !== "__") space[key] = _bindExtension(val);
+      });
+      return space;
+    }
+
+    // extensions should be an object graph with functions
+    // for leaves;
+    assert(false);
+  };
+
+  _.each(extensions, function(val, key) {
+    // avoid __name
+    if (key.slice(0,2) !== "__") obj[key] = _bindExtension(val);
+  });
+
 };
 
 var api = (function() {
