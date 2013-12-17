@@ -459,28 +459,6 @@ assertion_commands.expect = function() {
   return this;
 };
 
-// assertion_commands.expect = function() {
-//   var args =_.toArray(arguments);
-//   trace("driver.expect", args);
-
-//   var that = this;
-//   if this._lastPromise
-//   var resultPromise = expect( this._promises.pop(),
-//                               argsToExpectation(args),
-//                               this._stash,
-//                               new Error().stack);
-
-//   .then(function() {
-//     that._expectationsPassed += 1;
-//   }, function() {
-//     that._expectationsFailed += 1;
-//   });
-
-//   that._promises.push(resultPromise);
-//   return this;
-// };
-
-
 var control_commands = {};
 
 control_commands.config = function(opts) {
@@ -793,8 +771,6 @@ Driver.prototype._nullScribing = function() {
 
   this._scribe = devnullScribe();
 };
-
-
 
 var api = (function() {
   var curNamespace = driverExtensions;
