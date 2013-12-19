@@ -298,39 +298,6 @@ var Actor = function(alias) {
   this.jar = request.jar();
 };
 
-
-var driverExtensions = {};
-
-/*
- *  Attatch the api methods to the driver instance;
- */
-var bindExtensions = function(obj, extensions) {
-  var _bindExtension = function(extension) {
-    if (_.isFunction(extension)) {
-      return function() {
-        return extension.apply(obj, _.toArray(arguments));
-      };
-    }
-    if (_.isObject(extension)) {
-      var space = {};
-      _.each(extension, function(val, key) {
-        if (key.slice(0,2) !== "__") space[key] = _bindExtension(val);
-      });
-      return space;
-    }
-
-    // extensions should be an object graph with functions
-    // for leaves;
-    assert(false);
-  };
-
-  _.each(extensions, function(val, key) {
-    // avoid __name
-    if (key.slice(0,2) !== "__") obj[key] = _bindExtension(val);
-  });
-
-};
-
 var Driver = function() {
   this._resetPromises();
 
@@ -501,28 +468,6 @@ assertion_commands.expect = function() {
   return this;
 };
 
-// assertion_commands.expect = function() {
-//   var args =_.toArray(arguments);
-//   trace("driver.expect", args);
-
-//   var that = this;
-//   if this._lastPromise
-//   var resultPromise = expect( this._promises.pop(),
-//                               argsToExpectation(args),
-//                               this._stash,
-//                               new Error().stack);
-
-//   .then(function() {
-//     that._expectationsPassed += 1;
-//   }, function() {
-//     that._expectationsFailed += 1;
-//   });
-
-//   that._promises.push(resultPromise);
-//   return this;
-// };
-
-
 var control_commands = {};
 
 control_commands.config = function(opts) {
@@ -654,7 +599,7 @@ var instrument_commands = {};
 instrument_commands.log = function(stashKey) {
 
   if (stashKey === undefined) {
-    this._currentRequest.log = true;
+    this._requestClauses.log = true;
 
     // this._lastPromise().then( function(data) {
     //   if (data) {
@@ -833,7 +778,6 @@ Driver.prototype._consumeResults = function() {
   return results;
 };
 
-
 Driver.prototype._nullScribing = function() {
   var devnullScribe = function() {
     var self = {};
@@ -846,6 +790,49 @@ Driver.prototype._nullScribing = function() {
 };
 
 
+
+
+//
+//
+// TO BE REMOVED.
+//
+// The stuff below here hasn't proven terribly useful and isn't
+// worth the maintenance.
+//
+//
+
+
+var driverExtensions = {};
+
+/*
+ *  Attatch the api methods to the driver instance;
+ */
+var bindExtensions = function(obj, extensions) {
+  var _bindExtension = function(extension) {
+    if (_.isFunction(extension)) {
+      return function() {
+        return extension.apply(obj, _.toArray(arguments));
+      };
+    }
+    if (_.isObject(extension)) {
+      var space = {};
+      _.each(extension, function(val, key) {
+        if (key.slice(0,2) !== "__") space[key] = _bindExtension(val);
+      });
+      return space;
+    }
+
+    // extensions should be an object graph with functions
+    // for leaves;
+    assert(false);
+  };
+
+  _.each(extensions, function(val, key) {
+    // avoid __name
+    if (key.slice(0,2) !== "__") obj[key] = _bindExtension(val);
+  });
+
+};
 
 var api = (function() {
   var curNamespace = driverExtensions;
