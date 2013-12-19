@@ -557,7 +557,7 @@ var instrument_commands = {};
 instrument_commands.log = function(stashKey) {
 
   if (stashKey === undefined) {
-    this._currentRequest.log = true;
+    this._requestClauses.log = true;
 
     // this._lastPromise().then( function(data) {
     //   if (data) {
