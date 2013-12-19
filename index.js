@@ -276,14 +276,17 @@ var applyExpectations = function(result, expectations) {
 };
 
 var resolveRequestClauses = function(requestClauses) {
-  var resolved = {
-    log: requestClauses.log
-  };
   return Q.all([
     Q.all(requestClauses.untils),
     Q.all(requestClauses.nevers),
     Q.all(requestClauses.expectations)
   ]).spread( function(untils, nevers, expectations) {
+    // don't do this before the promises are evaluated
+    // are the driver script won't have a chance to have
+    // set it yet
+    var resolved = {
+      log: requestClauses.log
+    };
     resolved.untils = untils;
     resolved.nevers = nevers;
     resolved.expectations = expectations;
