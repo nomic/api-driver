@@ -185,7 +185,6 @@ var doUpload = function(cookieJar, req, config) {
 //
 
 var doUntil = function(fn, expectations, delay, timeout, negate) {
-  //>>> console.log("DO UNTIL", expectations);
 
   // Montior time spent to compare against timeout
   var start = new Date().getTime();
@@ -197,11 +196,9 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
   var next = function(err) {
     // One of the expectations failed.  Calculate remaining
     // time.
-    var elapsed = new Date().getTime() - start;
-    timeout -= elapsed + delay;
 
     // Out of time -- reject
-    if (timeout < 0) {
+    if (timeout === 0) {
       if (negate) {
         return null;
       } else {
@@ -209,16 +206,25 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
       }
     }
 
+    var elapsed = new Date().getTime() - start;
+    var newTimeout = timeout - elapsed - delay;
+
+    if (newTimeout < 0) {
+      // Allow one more attempt at roughly the end of the timeout range
+      // that doUntil was originally called with
+      newTimeout = 0;
+      delay = timeout;
+    }
+
     //Not out of time, so let's delay and then try again, with
     //the updated timeout.
     return Q.delay(delay).then(function() {
-      return doUntil(fn, expectations, Math.min(delay*delay, 1000), timeout, negate);
+      return doUntil(fn, expectations, Math.min(delay*delay, 1000), newTimeout, negate);
     });
   };
 
   return fn()
   .then( function(result) {
-    var succeeded = 0;
     for (var i = 0; i < expectations.length; i++) {
       var exp = expectations[i];
       try {
@@ -260,6 +266,7 @@ var existy = function(val) {
 };
 
 var argsToExpectation = function(args) {
+  args = _.clone(args);
   var expected = {};
   expected.statusCode = _.isNumber(args[0]) ? args.shift() : undefined;
   expected.body = args[0];
@@ -284,9 +291,7 @@ var resolveRequestClauses = function(requestClauses) {
     // don't do this before the promises are evaluated
     // are the driver script won't have a chance to have
     // set it yet
-    var resolved = {
-      log: requestClauses.log
-    };
+    var resolved = _.pick(requestClauses, "log", "timeout");
     resolved.untils = untils;
     resolved.nevers = nevers;
     resolved.expectations = expectations;
@@ -414,6 +419,9 @@ assertion_commands.until = function() {
   var args =_.toArray(arguments);
   trace("driver.until", args);
 
+  if (args.length === 3) {
+    this._requestClauses.timeout = args.pop();
+  }
   var stack = new Error().stack;
   var expectation = argsToExpectation(args);
 
@@ -434,6 +442,10 @@ assertion_commands.until = function() {
 assertion_commands.never = function() {
   var args =_.toArray(arguments);
   trace("driver.never", args);
+
+  if (args.length === 3) {
+    this._requestClauses.timeout = args.pop();
+  }
 
   var stack = new Error().stack;
   var expectation = argsToExpectation(args);
@@ -685,6 +697,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     nevers: [],
     expectations: [],
     log: false,
+    timeout: 10000,
   };
   if (that._config.defaultExpectation) {
     var defaultExpectation = {
@@ -707,12 +720,12 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     };
 
     var resPromise = reqClauses.untils.length > 0
-                     ? doUntil(request, reqClauses.untils, 10, 10000)
+                     ? doUntil(request, reqClauses.untils, 10, reqClauses.timeout)
                      : request();
 
     if (reqClauses.nevers.length > 0) {
       resPromise = resPromise.then(function(result) {
-        return doUntil(request, reqClauses.nevers, 10, 10000, true).then(function() {
+        return doUntil(request, reqClauses.nevers, 10, reqClauses.timeout, true).then(function() {
           return result;
         });
       });
