@@ -28,5 +28,8 @@
     "q": "0.9.6",
     "request": "2.26.0",
     "underscore": "1.5.1"
+  },
+  "devDependencies": {
+    "mocha": "1.17.1"
   }
 }
