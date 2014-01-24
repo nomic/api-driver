@@ -27,4 +27,23 @@ suite('checkJSONExpression', function(done) {
 
         done();
     });
+
+    test('comparisons', function(done) {
+        assert( checkJSONExpression({a: {$gt:  10}}, {a: 11}));
+        assert(!checkJSONExpression({a: {$gt:  10}}, {a: 10}));
+        assert(!checkJSONExpression({a: {$gt:  10}}, {a: 9}));
+
+        assert( checkJSONExpression({a: {$gte: 10}}, {a: 11}));
+        assert( checkJSONExpression({a: {$gte: 10}}, {a: 10}));
+        assert(!checkJSONExpression({a: {$gte: 10}}, {a: 9}));
+
+        assert(!checkJSONExpression({a: {$lt:  10}}, {a: 11}));
+        assert(!checkJSONExpression({a: {$lt:  10}}, {a: 10}));
+        assert( checkJSONExpression({a: {$lt:  10}}, {a: 9}));
+
+        assert(!checkJSONExpression({a: {$lte: 10}}, {a: 11}));
+        assert( checkJSONExpression({a: {$lte: 10}}, {a: 10}));
+        assert( checkJSONExpression({a: {$lte: 10}}, {a: 9}));
+        done();
+    });
 });
