@@ -1,7 +1,7 @@
 "use strict";
 /*global suite: false, test: false, setup: false*/
 
-var drive = require("./index"),
+var drive = require("../index"),
     expector = drive.expector,
     assert = require("assert");
 
