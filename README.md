@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/nomic/api-driver.png)](https://travis-ci.org/nomic/api-driver)
 api-driver
 ==========
 
