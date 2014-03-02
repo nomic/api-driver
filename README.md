@@ -2,4 +2,4 @@
 api-driver
 ==========
 
-string together json api calls without all the fuss
+string together json api calls like a boss
