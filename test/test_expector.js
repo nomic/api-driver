@@ -19,6 +19,12 @@ suite('checkJSONExpresion', function() {
     assert( !cje({a: "$int"}, {a: 1.5}) );
   });
 
+  test('$not-exists', function() {
+    assert(  cje({a: "$not-exists"}, {}) );
+    assert( !cje({a: "$not-exists"}, {a: 1}) );
+  });
+
+
   test('$unordered', function() {
     assert(  cje({$unordered: [1, 2]}, [1, 2]) );
     assert(  cje({$unordered: [1, 2]}, [2, 1]) );
