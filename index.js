@@ -189,18 +189,14 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
   // Montior time spent to compare against timeout
   var start = new Date().getTime();
 
-  var success = function(result) {
-    return result;
-  };
-
-  var next = function(err) {
+  var next = function(err, result) {
     // One of the expectations failed.  Calculate remaining
     // time.
 
     // Out of time -- reject
     if (timeout === 0) {
       if (negate) {
-        return null;
+        return result;
       } else {
         return Q.reject(err);
       }
@@ -225,24 +221,27 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
 
   return fn()
   .then( function(result) {
-    for (var i = 0; i < expectations.length; i++) {
-      var exp = expectations[i];
-      try {
-        expector.expect(result, exp.expected, exp.stack);
-      } catch (e) {
+    return Q.all(_.map(expectations, function(exp) {
+      return expector.expect(result, exp.expected, exp.stack)
+      .then(function() {
         if (negate) {
-          continue;
-        } else {
-          return next(e);
+          return Q.reject(expector.fail(
+            'One or more expectations succeeded which should not have',
+            'Predicate Failure',
+            exp.stack
+          ));
         }
-      }
-      if (negate) {
-        return Q.reject(expector.fail('One or more expectations succeeded which should not have', 'Predicate Failure', exp.stack));
-      }
-    }
-    return negate ? next() : result;
-  })
-  .then(success);
+      }, function(err) {
+        if (! negate) throw err;
+      });
+    }))
+    .then(function() {
+      return negate ? next(null, result) : result;
+    }, function(err) {
+      if (negate) throw err;
+      return next(err);
+    });
+  });
 };
 
 
@@ -276,10 +275,16 @@ var argsToExpectation = function(args) {
 };
 
 var applyExpectations = function(result, expectations) {
-  _.each(expectations, function(expectation) {
-    expector.expect(result, expectation.expected, expectation.stack);
+  return Q.all(_.map(expectations, function(expectation) {
+    return expector.expect(
+      result,
+      expectation.expected,
+      expectation.stack
+    );
+  }))
+  .then(function() {
+    return result;
   });
-  return result;
 };
 
 var resolveRequestClauses = function(requestClauses) {
@@ -747,9 +752,9 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
       if (reqClauses.expectations.length > 0) {
         return applyExpectations(result, reqClauses.expectations);
       }
-      if (defaultExpectation) {
+//      if (! (reqClauses.untils.length || reqClauses.nevers.length)) {
         return applyExpectations(result, [defaultExpectation]);
-      }
+//      }
     });
 
     scribeRequest(actor.alias, req, onExpectations, reqTemplate);

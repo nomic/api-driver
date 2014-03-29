@@ -3,7 +3,9 @@
 
 var assert = require('assert'),
     expector = require('../lib/expector'),
-    cje = expector.test.checkJSONExpression;
+    cje = expector.test.checkJSONExpression,
+    expectFn = expector.test.expectFn,
+    Q = require("q");
 
 
 suite('checkJSONExpresion', function() {
@@ -53,5 +55,25 @@ suite('checkJSONExpresion', function() {
     assert( !cje({a: {$lte: 10}}, {a: 11}) );
     assert(  cje({a: {$lte: 10}}, {a: 10}) );
     assert(  cje({a: {$lte: 10}}, {a: 9})) ;
+  });
+
+});
+
+suite('expector.expect', function() {
+  test('custom expectation function', function(done) {
+    Q.all([
+      expectFn({}, function() {}),
+      expectFn({}, function() {return false;}),
+//      expectFn({}, function() {return Q(1);}),
+      expectFn({}, function() {return Q.reject();})
+      .then(function() {
+        assert(false, "should have failed on rejected promise");
+      }, function(){}),
+      expectFn({}, function() {throw new Error();})
+      .then(function() {
+        assert(false, "should have failed on thrown error");
+      }, function(){})
+    ])
+    .then(function() {done();}, done);
   });
 });
