@@ -1,5 +1,5 @@
 "use strict";
-/*global suite: false, test: false, setup: false*/
+/*global suite: false, test: false*/
 
 var assert = require('assert'),
     expector = require('../lib/expector'),
