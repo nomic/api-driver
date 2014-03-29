@@ -1,3 +1,3 @@
 SCRIPT_DIR=${0%/*}
 
-mocha --ui tdd $SCRIPT_DIR/test_*.js
+mocha --ui tdd --reporter spec $SCRIPT_DIR/test_*.js
