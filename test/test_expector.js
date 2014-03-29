@@ -7,38 +7,31 @@ var assert = require('assert'),
 
 
 suite('checkJSONExpresion', function() {
-  test('$length', function(done) {
+  test('$length', function() {
     assert(  cje({$length: 1}, [2]) );
     assert( !cje({$length: 1}, []) );
     assert( !cje({$length: 1}, [2, 3]) );
     assert(  cje({$length: 4}, [1, 2, 3, 4]) );
-
-    done();
   });
 
-  test('$int', function(done) {
+  test('$int', function() {
     assert(  cje({a: "$int"}, {a: 2}) );
     assert( !cje({a: "$int"}, {a: 1.5}) );
-    done();
   });
 
-  test('$unordered', function(done) {
+  test('$unordered', function() {
     assert(  cje({$unordered: [1, 2]}, [1, 2]) );
     assert(  cje({$unordered: [1, 2]}, [2, 1]) );
     assert( !cje({$unordered: [1, 2, 3]}, [1, 2]) );
-
-    done();
   });
 
-  test('combos', function(done) {
+  test('combos', function() {
     assert(  cje({$unordered: [1, 2], $length: 2}, [2, 1]) );
     assert( !cje({$unordered: [1, 2], $length: 3}, [2, 1]) );
     assert( !cje({$length: 2, $unordered: [1, 3]}, [2, 1]) );
-
-    done();
   });
 
-  test('comparisons', function(done) {
+  test('comparisons', function() {
     assert(  cje({a: {$gt:  10}}, {a: 11}) );
     assert( !cje({a: {$gt:  10}}, {a: 10}) );
     assert( !cje({a: {$gt:  10}}, {a: 9})) ;
@@ -54,6 +47,5 @@ suite('checkJSONExpresion', function() {
     assert( !cje({a: {$lte: 10}}, {a: 11}) );
     assert(  cje({a: {$lte: 10}}, {a: 10}) );
     assert(  cje({a: {$lte: 10}}, {a: 9})) ;
-    done();
   });
 });
