@@ -16,14 +16,24 @@ suite('checkJSONExpresion', function() {
     done();
   });
 
+  test('$int', function(done) {
+    assert(  cje({a: "$int"}, {a: 2}) );
+    assert( !cje({a: "$int"}, {a: 1.5}) );
+    done();
+  });
+
   test('$unordered', function(done) {
-    assert( cje({$unordered: [1, 2]}, [1, 2]) );
-    assert( cje({$unordered: [1, 2]}, [2, 1]) );
-
-    // FIXME: this seems like it should fail
-    //assert(!cje({$unordered: [1, 2]}, [1, 2, 3]));
-
+    assert(  cje({$unordered: [1, 2]}, [1, 2]) );
+    assert(  cje({$unordered: [1, 2]}, [2, 1]) );
     assert( !cje({$unordered: [1, 2, 3]}, [1, 2]) );
+
+    done();
+  });
+
+  test('combos', function(done) {
+    assert(  cje({$unordered: [1, 2], $length: 2}, [2, 1]) );
+    assert( !cje({$unordered: [1, 2], $length: 3}, [2, 1]) );
+    assert( !cje({$length: 2, $unordered: [1, 3]}, [2, 1]) );
 
     done();
   });
