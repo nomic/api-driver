@@ -44,9 +44,7 @@ var makeCookies = function(jar, url) {
     get: function(name) {
       var cookies = jar.get({url: url});
       var matches = _.where(cookies, {name: name});
-      assert( matches.length < 2,
-              new Error("Driver problem: multiple matching cookies found").stack
-      );
+      assert( matches.length < 2, "Multiple matching cookies found");
 
       if (matches.length === 0) return null;
 
