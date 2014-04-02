@@ -294,7 +294,7 @@ var resolveRequestClauses = function(requestClauses) {
     // don't do this before the promises are evaluated
     // are the driver script won't have a chance to have
     // set it yet
-    var resolved = _.pick(requestClauses, "log", "timeout");
+    var resolved = _.omit(requestClauses, "untils", "nevers", "expectations");
     resolved.untils = untils;
     resolved.nevers = nevers;
     resolved.expectations = expectations;
@@ -696,6 +696,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
 
   // Recording clauses for the new request.
   var reqClauses = that._requestClauses = {
+    config: that._config,
     untils: [],
     nevers: [],
     expectations: [],
@@ -717,9 +718,9 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
 
     var request = function() {
       if (req.method === "upload") {
-        return doUpload(actor.jar, req, that._config);
+        return doUpload(actor.jar, req, reqClauses.config);
       }
-      return doRequest(actor.jar, req, reqConfig(that._config));
+      return doRequest(actor.jar, req, reqConfig(reqClauses.config));
     };
 
     var resPromise = reqClauses.untils.length > 0
