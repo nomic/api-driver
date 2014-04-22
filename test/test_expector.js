@@ -36,6 +36,14 @@ suite('checkJSONExpresion', function() {
     assert( !cje({$unordered: [{$gt: 3}, 2, 1]}, [1, 2, 0]) );
   });
 
+  test('$contains', function() {
+    assert(  cje({$contains: [1, 2]}, [1, 2]) );
+    assert(  cje({$contains: [1, 2]}, [2, 1]) );
+    assert(  cje({$contains: [1, 2]}, [1, 2, 3]) );
+    assert( !cje({$contains: [1, 2, 3]}, [1, 2]) );
+    assert(  cje({$contains: [{$gt: 3}]}, [1, 2, 4]) );
+  });
+
   test('combos', function() {
     assert(  cje({$unordered: [1, 2], $length: 2}, [2, 1]) );
     assert( !cje({$unordered: [1, 2], $length: 3}, [2, 1]) );
