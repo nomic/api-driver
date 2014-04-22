@@ -30,6 +30,7 @@ suite('checkJSONExpresion', function() {
   test('$unordered', function() {
     assert(  cje({$unordered: [1, 2]}, [1, 2]) );
     assert(  cje({$unordered: [1, 2]}, [2, 1]) );
+    assert( !cje({$unordered: [1, 2]}, [1, 2, 3]) );
     assert( !cje({$unordered: [1, 2, 3]}, [1, 2]) );
   });
 
