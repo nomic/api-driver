@@ -32,6 +32,8 @@ suite('checkJSONExpresion', function() {
     assert(  cje({$unordered: [1, 2]}, [2, 1]) );
     assert( !cje({$unordered: [1, 2]}, [1, 2, 3]) );
     assert( !cje({$unordered: [1, 2, 3]}, [1, 2]) );
+    assert(  cje({$unordered: [{$gt: 3}, 2, 1]}, [1, 2, 4]) );
+    assert( !cje({$unordered: [{$gt: 3}, 2, 1]}, [1, 2, 0]) );
   });
 
   test('combos', function() {
