@@ -44,6 +44,13 @@ suite('checkJSONExpresion', function() {
     assert(  cje({$contains: [{$gt: 3}]}, [1, 2, 4]) );
   });
 
+  test('equal arrays', function() {
+    assert(  cje([1, 2], [1, 2]) );
+    assert( !cje([1, 2], [1, 2, 3]) );
+    assert( !cje([1, 2, 3], [1, 2]) );
+    assert( !cje([1, 2], [1, 1]) );
+  });
+
   test('combos', function() {
     assert(  cje({$unordered: [1, 2], $length: 2}, [2, 1]) );
     assert( !cje({$unordered: [1, 2], $length: 3}, [2, 1]) );
