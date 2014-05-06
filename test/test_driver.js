@@ -3,76 +3,77 @@
 
 var drive = require("../index"),
     expector = drive.expector,
-    assert = require("assert");
+    assert = require("assert"),
+    Q = require("q");
 
-var SUCCESS_BODY = {result:"success"};
-var SUCCESS_RESPONSE = {statusCode: 200, body:SUCCESS_BODY};
-var FAILURE_RESPONSE = {statusCode: 400, body:{result:"failure"}};
-var NOT_FOUND_RESPONSE = {statusCode: 404, body:{result:"not found"}};
+var SUCCESS_BODY = {result: "success"};
+var SUCCESS_RESPONSE = {statusCode: 200, json: SUCCESS_BODY};
+var FAILURE_RESPONSE = {statusCode: 400, json: {result: "failure"}};
+var NOT_FOUND_RESPONSE = {statusCode: 404, json: {result: "not found"}};
 
-var makeRequestFake = function() {
-  var self = {};
+function makeRequestFake(memo) {
 
-  self.doRequestFake = function(cookieJar, req, config, callback) {
-    self.lastReq = req;
-    self.lastConfig = config;
+  function requestFake(opts) {
+    var req = opts;
+    memo.lastReq = req;
 
     if (req.path === "fail") {
-      return callback(null, FAILURE_RESPONSE);
+      return Q(FAILURE_RESPONSE);
     }
     if (req.path === "succeed") {
-      return callback(null, SUCCESS_RESPONSE);
+      return Q(SUCCESS_RESPONSE);
     }
     if (req.path === "return") {
-      return callback(null, {statusCode: 200, body:req.body});
+      return Q({statusCode: 200, json:req.body});
     }
     if (req.path === "error") {
-      return callback(new Error());
+      return Q.fcall(function() { throw new Error(); });
     }
 
-    callback(null, NOT_FOUND_RESPONSE);
-  };
+    return Q(NOT_FOUND_RESPONSE);
+  }
 
-  return self;
-};
+  return requestFake;
+}
 
 var assertDriverError = function(driver, expected, done) {
-  driver.go(function(err) {
+  driver.results(function(err) {
     if (!err && !expected) {
       return done();
     }
     assert.ok(err && expected);
+    console.log(err.stack);
     assert.strictEqual(err.name, expected.name);
     done();
   });
 };
 
 var assertDriverResults = function(driver, expected, done) {
-  driver.go(function(__, result) {
+  driver.results(function(__, result) {
     assert.deepEqual(result, expected);
     done();
   });
 };
 
 var assertDriverOutput = function(driver, error, result, done) {
-  driver.go( function(__, result) {
+  driver.results( function(__, result) {
     assertDriverError(driver, error, function() {
       assertDriverResults(driver, result, done);
     });
   });
 };
 
-var assertCalls = function(driver, method, requestFake, done) {
-  driver.go( function() {
-    assert.strictEqual(method, requestFake.lastReq.method);
+var assertCalls = function(driver, method, reqMemo, done) {
+  driver.results( function() {
+    assert.strictEqual(method, reqMemo.lastReq.method);
     done();
   });
 };
 
-var assertRequested = function(driver, req, requestFake, done) {
-  driver.go( function() {
-    assert.strictEqual(req.method, requestFake.lastReq.method);
-    assert.deepEqual(req.body, requestFake.lastReq.body);
+var assertRequested = function(driver, req, reqMemo, done) {
+  driver.results( function() {
+    assert.strictEqual(req.method, reqMemo.lastReq.method);
+    assert.deepEqual(req.body, reqMemo.lastReq.body);
     done();
   });
 };
@@ -83,13 +84,12 @@ var skip = function(name) {
     };
 };
 
-suite("Driver Basics", skip('Driver Basics'), function() {
+suite("Driver Basics", function() {
 
-  var requestFake;
+  var reqMemo = {};
 
   setup(function() {
-    requestFake = makeRequestFake();
-    drive._private.doRequest = requestFake.doRequestFake;
+    drive.testing.setHttpRequestFake(makeRequestFake(reqMemo));
   });
 
   test("create a driver", function(done) {
@@ -159,16 +159,16 @@ suite("Driver Basics", skip('Driver Basics'), function() {
       .introduce("user")
       .GET("succeed");
 
-    assertCalls(driver, "GET", requestFake, function() {
+    assertCalls(driver, "GET", reqMemo, function() {
 
       driver.POST();
-      assertCalls(driver, "POST", requestFake, function() {
+      assertCalls(driver, "POST", reqMemo, function() {
 
         driver.PUT();
-        assertCalls(driver, "PUT", requestFake, function() {
+        assertCalls(driver, "PUT", reqMemo, function() {
 
           driver.DELETE();
-          assertCalls(driver, "DELETE", requestFake, done);
+          assertCalls(driver, "DELETE", reqMemo, done);
         });
       });
     });
@@ -199,7 +199,7 @@ suite("Driver Basics", skip('Driver Basics'), function() {
       .foo.bar("baz")
       .expect(200, {value : "baz"});
 
-    assertRequested(driver, {method:"POST", body: { value: "baz" } }, requestFake, done);
+    assertRequested(driver, {method:"POST", body: { value: "baz" } }, reqMemo, done);
   });
 
 });
@@ -207,11 +207,10 @@ suite("Driver Basics", skip('Driver Basics'), function() {
 
 
 suite("Stashing", skip('Stashing'), function() {
-  var requestFake;
+  var reqMemo;
 
   setup(function() {
-    requestFake = makeRequestFake();
-    drive._private.doRequest = requestFake.doRequestFake;
+    drive.testing.setHttpRequestFake(makeRequestFake(reqMemo));
   });
 
   test("submit stashed value", function(done) {
@@ -221,7 +220,7 @@ suite("Stashing", skip('Stashing'), function() {
       .introduce("user")
       .POST("succeed", ":obj")
       .go(function(){
-        assert.deepEqual(requestFake.lastReq.body, {value: "foo"});
+        assert.deepEqual(reqMemo.lastReq.body, {value: "foo"});
         done();
       });
   });

@@ -89,6 +89,10 @@ var reqConfig = function(config) {
   return conf;
 };
 
+var httpRequest = function(opts) {
+  return Q.nfcall(request, opts);
+};
+
 var doRequest = function(cookieJar, req, config) {
   trace("doing request", req);
 
@@ -122,7 +126,7 @@ var doRequest = function(cookieJar, req, config) {
   opts.encoding = null;
 
   var start = new Date().getTime();
-  var resPromise = Q.nfcall(request, opts)
+  return httpRequest(opts)
   .spread( function(response) {
     var end = new Date().getTime();
     return Q.nfcall(
@@ -136,8 +140,6 @@ var doRequest = function(cookieJar, req, config) {
       }
     );
   });
-
-  return resPromise;
 
 };
 
@@ -321,6 +323,7 @@ var Driver = function() {
   this._expectationsFailed = 0;
   this._config = {
     requestHeaders : {"Content-Type" : "application/json" },
+    requestEndpoint : "http://localhost",
     delay: 0
   };
   bindExtensions(this, driverExtensions);
@@ -996,3 +999,8 @@ var api = (function() {
 exports.driver = function() { return new Driver(); };
 exports.expector = expector;
 exports.api = api;
+exports.testing = {
+  setHttpRequestFake: function(requestFn) {
+    httpRequest = requestFn;
+  }
+};
