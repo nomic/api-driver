@@ -706,6 +706,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
     log: false,
     timeout: 10000,
   };
+  defaultExpectation = null;
   if (that._config.defaultExpectation) {
     var defaultExpectation = {
       stack: new Error().stack,
@@ -755,7 +756,7 @@ Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
         return applyExpectations(result, reqClauses.expectations);
       }
 //      if (! (reqClauses.untils.length || reqClauses.nevers.length)) {
-        return applyExpectations(result, [defaultExpectation]);
+        return applyExpectations(result, defaultExpectation ? [defaultExpectation] : []);
 //      }
     });
 
