@@ -13,28 +13,52 @@ var NOT_FOUND_RESPONSE = {statusCode: 404, json: {result: "not found"}};
 
 function makeRequestFake(memo) {
 
+  function responseFake(opts) {
+    return Q.all([{
+      statusCode: opts.statusCode,
+      body: JSON.stringify(opts.json),
+      headers: opts.headers || []
+    }]);
+  }
+
+  function hasPath(req, path) {
+    return (req.uri.slice(-path.length, req.uri.length) === path);
+  }
+
   function requestFake(opts) {
     var req = opts;
     memo.lastReq = req;
 
-    if (req.path === "fail") {
-      return Q(FAILURE_RESPONSE);
+    if (hasPath(req, "fail")) {
+      return responseFake(FAILURE_RESPONSE);
     }
-    if (req.path === "succeed") {
-      return Q(SUCCESS_RESPONSE);
+    if (hasPath(req, "succeed")) {
+      return responseFake(SUCCESS_RESPONSE);
     }
-    if (req.path === "return") {
-      return Q({statusCode: 200, json:req.body});
+    if (hasPath(req, "return")) {
+      return responseFake({statusCode: 200, json:req.body});
     }
-    if (req.path === "error") {
+    if (hasPath(req, "error")) {
       return Q.fcall(function() { throw new Error(); });
     }
 
-    return Q(NOT_FOUND_RESPONSE);
+    return responseFake(NOT_FOUND_RESPONSE);
   }
 
   return requestFake;
 }
+
+var assertDriverFailure = function(driver, expected, done) {
+  driver.results(function(__, results) {
+    var err = results.err;
+    if (!err && !expected) {
+      return done();
+    }
+    assert.ok(err && expected);
+    assert.strictEqual(err.name, expected.name);
+    done();
+  });
+};
 
 var assertDriverError = function(driver, expected, done) {
   driver.results(function(err) {
@@ -42,7 +66,6 @@ var assertDriverError = function(driver, expected, done) {
       return done();
     }
     assert.ok(err && expected);
-    console.log(err.stack);
     assert.strictEqual(err.name, expected.name);
     done();
   });
@@ -56,10 +79,8 @@ var assertDriverResults = function(driver, expected, done) {
 };
 
 var assertDriverOutput = function(driver, error, result, done) {
-  driver.results( function(__, result) {
-    assertDriverError(driver, error, function() {
-      assertDriverResults(driver, result, done);
-    });
+  assertDriverError(driver, error, function() {
+    assertDriverResults(driver, result, done);
   });
 };
 
@@ -73,15 +94,15 @@ var assertCalls = function(driver, method, reqMemo, done) {
 var assertRequested = function(driver, req, reqMemo, done) {
   driver.results( function() {
     assert.strictEqual(req.method, reqMemo.lastReq.method);
-    assert.deepEqual(req.body, reqMemo.lastReq.body);
+    assert.deepEqual(JSON.stringify(req.body), reqMemo.lastReq.body);
     done();
   });
 };
 
 var skip = function(name) {
-    return function() {
-        console.log("Skipping test "+name+", it's busted.");
-    };
+  return function() {
+    console.log("Skipping suite "+name+", it's busted.");
+  };
 };
 
 suite("Driver Basics", function() {
@@ -129,7 +150,7 @@ suite("Driver Basics", function() {
       .introduce("user")
       .GET("succeed");
 
-    assertDriverOutput(driver,  null, {expectationsPassed:0}, done);
+    assertDriverOutput(driver,  null, {expectationsPassed:0, expectationsFailed:0}, done);
   });
 
   test("successful expectation", function(done) {
@@ -139,7 +160,7 @@ suite("Driver Basics", function() {
       .GET("succeed")
       .expect(200, SUCCESS_BODY);
 
-    assertDriverResults(driver, {expectationsPassed:1}, done);
+    assertDriverResults(driver, {expectationsPassed:1, expectationsFailed:0}, done);
   });
 
   test("ok passes", function(done) {
@@ -149,7 +170,7 @@ suite("Driver Basics", function() {
       .GET("succeed")
       .ok();
 
-    assertDriverError(driver, null, done);
+    assertDriverOutput(driver, null, {expectationsPassed:0, expectationsFailed:0}, done);
   });
 
 
@@ -181,7 +202,7 @@ suite("Driver Basics", function() {
       .GET("fail")
       .expect(200);
 
-    assertDriverError(driver, expector.statusFail(400, 200), done);
+    assertDriverFailure(driver, expector.statusFail(400, 200), done);
   });
 
   test("extend api with request", function(done) {
@@ -206,8 +227,8 @@ suite("Driver Basics", function() {
 
 
 
-suite("Stashing", skip('Stashing'), function() {
-  var reqMemo;
+suite("Stashing", function() {
+  var reqMemo = {};
 
   setup(function() {
     drive.testing.setHttpRequestFake(makeRequestFake(reqMemo));
@@ -219,20 +240,24 @@ suite("Stashing", skip('Stashing'), function() {
       .stash("obj", {value: "foo"})
       .introduce("user")
       .POST("succeed", ":obj")
-      .go(function(){
-        assert.deepEqual(reqMemo.lastReq.body, {value: "foo"});
+      .results(function(){
+        assert.deepEqual(JSON.parse(reqMemo.lastReq.body), {value: "foo"});
         done();
       });
   });
 
   test("exception on undefined stash name", function(done) {
     var driver = drive.driver();
-    driver
-      .introduce("user")
-      .GET("succeed")
-      .expect(200, ":bogus");
-
-    assertDriverError(driver, new Error(), done);
+    try {
+      driver
+        .introduce("user")
+        .GET("succeed")
+        .expect(200, ":bogus");
+    } catch (err) {
+      assert(/stash/.test(err.toString()));
+      return done();
+    }
+    assert(false, "Expected an exception to be thrown");
   });
 
   test("stash and use a request result", function(done) {
