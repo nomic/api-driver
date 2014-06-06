@@ -312,6 +312,7 @@ var Actor = function(alias) {
 };
 
 var Driver = function() {
+  this._concurrent = false;
   this._resetPromises();
 
   this.actors = [];
@@ -568,6 +569,13 @@ control_commands.wait = function(millis) {
   return this;
 };
 
+control_commands.concurrent = function(fn) {
+  this._concurrent = true;
+  fn();
+  this._concurrent = false;
+  return this;
+};
+
 control_commands.results = function(fn) {
   trace("driver.results");
 
@@ -677,7 +685,7 @@ _.extend(
 
 Driver.prototype._handleRequest = function(req) {
   trace("driver._handleRequest", req);
-  this.wait(this._config.delay);
+  if (!this._concurrent) this.wait(this._config.delay);
 
   var subbingPath = this._stash.substitutePath(req.path || "");
   var subbingRest = this._stash.substitute(_.omit(req, "path"));
@@ -928,7 +936,7 @@ var api = (function() {
 
     var fullname = curNamespace.__name + "." + name;
     curNamespace[name] = function() {
-      this.wait(this._config.delay);
+      if (!this._concurrent) this.wait(this._config.delay);
 
       var args = _.toArray(arguments);
       var that = this;
