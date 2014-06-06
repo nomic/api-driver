@@ -677,9 +677,7 @@ _.extend(
 
 Driver.prototype._handleRequest = function(req) {
   trace("driver._handleRequest", req);
-  if (this._delay > 0) {
-    this.wait(this._delay);
-  }
+  this.wait(this._config.delay);
 
   var subbingPath = this._stash.substitutePath(req.path || "");
   var subbingRest = this._stash.substitute(_.omit(req, "path"));
@@ -916,9 +914,6 @@ var api = (function() {
   };
 
   self.request = function() {
-    if (this._delay > 0) {
-      this.wait(this._delay);
-    }
 
     var name, description, reqBuilderFn;  //expected args; description is optional
     var args = _.toArray(arguments);
@@ -933,6 +928,8 @@ var api = (function() {
 
     var fullname = curNamespace.__name + "." + name;
     curNamespace[name] = function() {
+      this.wait(this._config.delay);
+
       var args = _.toArray(arguments);
       var that = this;
 

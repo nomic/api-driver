@@ -1,6 +1,6 @@
 {
   "name": "api-driver",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "a concise way to string together and test JSON API calls",
   "keywords": [
     "http",
