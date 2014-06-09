@@ -6,4 +6,4 @@ mocha --ui tdd --reporter spec $SCRIPT_DIR/test_*.js
 
 echo ""
 echo "# Running Integration Tests"
-integration/runtests.sh
+$SCRIPT_DIR/integration/runtests.sh
