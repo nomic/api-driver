@@ -2,13 +2,22 @@
 /*global suite: false, test: false, setup: false*/
 
 var drive = require("../../index"),
-    expector = drive.expector,
-    assert = require("assert"),
-    Q = require("q");
+  // Use 'want' so as not to confuse with driver.expect
+  want = require('chai').expect;
 
 suite("Driver Basics", function() {
 
-  var reqMemo = {};
+  function wantNoFailures(done) {
+    return function (err, result) {
+      want(err).to.equal(null);
+      want(
+        result.err,
+        result.err && result.err.stack
+      ).to.equal(undefined);
+      want(result.expectationsFailed).to.equal(0);
+      done();
+    };
+  }
 
   var driver;
 
@@ -29,15 +38,34 @@ suite("Driver Basics", function() {
       .introduce('ella')
       .GET('/')
       .expect(200)
-      .results(done);
+      .results(wantNoFailures(done));
   });
 
   test("Check body", function(done) {
     driver
       .introduce('ella')
       .GET('/')
-      .expect({})
-      .results(done);
+      .expect({title: "$exists"})
+      .results(wantNoFailures(done));
+  });
+
+  test("Check 200 and Body", function(done) {
+    driver
+      .introduce('ella')
+      .GET('/')
+      .expect(200, {title: "$exists"})
+      .results(wantNoFailures(done));
+  });
+
+  test("Check function expectation args", function(done) {
+    driver
+      .introduce('ella')
+      .GET('/')
+      .expect(function(body, response) {
+        want(body).to.have.ownProperty('title');
+        want(response).to.have.ownProperty('statusCode');
+      })
+      .results(wantNoFailures(done));
   });
 
 });

@@ -409,11 +409,11 @@ var assertion_commands = {};
 // A quick way to assert that the request didn't end in error.  Usefult for checking
 // calls that are needed for your test flow but not actually the focus of your test.
 assertion_commands.ok = function() {
-  this.expect(function(result) {
+  this.expect(function(body, response) {
     assert(
-      [200, 201, 202, 203, 204].indexOf(result.statusCode) != -1,
-      "Expected ok (2xx), but got http status code: " + result.statusCode +
-      "\nResponse Body:\n"+JSON.stringify(result.json, null, 4)
+      [200, 201, 202, 203, 204].indexOf(response.statusCode) !== -1,
+      "Expected ok (2xx), but got http status code: " + response.statusCode +
+      "\nResponse Body:\n"+JSON.stringify(body, null, 4)
     );
     return true;
   });
