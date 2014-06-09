@@ -16,10 +16,10 @@ suite("Driver Basics", function() {
     driver = drive.driver();
     driver
       .config({
-          requestEndpoint: "http://localhost:3333",
-          requestHeaders: {
-              "Content-Type": "application/json"
-          }
+        requestEndpoint: "http://localhost:3333",
+        requestHeaders: {
+          "Content-Type": "application/json"
+        }
       })
       .results(done);
   });
@@ -29,6 +29,14 @@ suite("Driver Basics", function() {
       .introduce('ella')
       .GET('/')
       .expect(200)
+      .results(done);
+  });
+
+  test("Check body", function(done) {
+    driver
+      .introduce('ella')
+      .GET('/')
+      .expect({})
       .results(done);
   });
 
