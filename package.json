@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/nomic/api-driver",
   "dependencies": {
+    "chai": "^1.9.1",
     "form-data": "0.1.0",
     "json-diff": "0.3.1",
     "q": "0.9.6",
