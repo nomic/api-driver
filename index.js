@@ -687,7 +687,7 @@ Driver.prototype._handleRequest = function(req) {
   trace("driver._handleRequest", req);
   if (!this._concurrent) this.wait(this._config.delay);
 
-  var subbingPath = this._stash.substitutePath(req.path || "");
+  var subbingPath = this._stash.substituteRoute(req.path || "");
   var subbingRest = this._stash.substitute(_.omit(req, "path"));
   var subbingReq = Q.all([subbingPath, subbingRest])
   .spread(function(path, rest) {
