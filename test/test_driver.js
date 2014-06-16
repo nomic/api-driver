@@ -205,24 +205,6 @@ suite("Driver Basics", function() {
     assertDriverFailure(driver, expector.statusFail(400, 200), done);
   });
 
-  test("extend api with request", function(done) {
-    var api = drive.api;
-
-    api.namespace("foo", "description", function() {
-      api.request("bar", function(value) {
-        return api.POST("return", {value : value});
-      });
-    });
-
-    var driver = drive.driver();
-    driver
-      .introduce("user")
-      .foo.bar("baz")
-      .expect(200, {value : "baz"});
-
-    assertRequested(driver, {method:"POST", body: { value: "baz" } }, reqMemo, done);
-  });
-
 });
 
 
