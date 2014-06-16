@@ -402,6 +402,7 @@ http_commands.upload = function (path, file, body, headers) {
 
 http_commands.req = function(req) {
   this._handleRequest(req);
+  return this;
 };
 
 var assertion_commands = {};
