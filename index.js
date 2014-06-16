@@ -244,22 +244,6 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
   });
 };
 
-
-var subUntilClauses = function(clauses, stash) {
-  var expecteds = _.pluck(clauses, "expected");
-  var expPromises = _.map(expecteds, _.bind(stash.substitute, stash));
-  var pmap =_.map(expPromises, function(expPromise, i) {
-    return expPromise.then( function(exp) {
-      return {
-        stack: clauses[i].stack,
-        expected: exp
-      };
-    });
-  });
-
-  return Q.all(pmap);
-};
-
 var existy = function(val) {
   return (val !== undefined && val !== null);
 };
@@ -327,7 +311,6 @@ var Driver = function() {
     requestEndpoint : "http://localhost",
     delay: 0
   };
-  bindExtensions(this, driverExtensions);
 
   return this;
 };
@@ -820,192 +803,8 @@ Driver.prototype._nullScribing = function() {
   this._scribe = devnullScribe();
 };
 
-
-
-
-//
-//
-// TO BE REMOVED.
-//
-// The stuff below here hasn't proven terribly useful and isn't
-// worth the maintenance.
-//
-//
-
-
-var driverExtensions = {};
-
-/*
- *  Attatch the api methods to the driver instance;
- */
-var bindExtensions = function(obj, extensions) {
-  var _bindExtension = function(extension) {
-    if (_.isFunction(extension)) {
-      return function() {
-        return extension.apply(obj, _.toArray(arguments));
-      };
-    }
-    if (_.isObject(extension)) {
-      var space = {};
-      _.each(extension, function(val, key) {
-        if (key.slice(0,2) !== "__") space[key] = _bindExtension(val);
-      });
-      return space;
-    }
-
-    // extensions should be an object graph with functions
-    // for leaves;
-    assert(false);
-  };
-
-  _.each(extensions, function(val, key) {
-    // avoid __name
-    if (key.slice(0,2) !== "__") obj[key] = _bindExtension(val);
-  });
-
-};
-
-var api = (function() {
-  var curNamespace = driverExtensions;
-  var self = {};
-
-  self.namespace = function(namespace, description, fn) {
-
-    var origNamespace = curNamespace;
-    _.each(namespace.split("."), function(name) {
-      curNamespace[name] = curNamespace[name] || {};
-      curNamespace = curNamespace[name];
-      curNamespace.__name = namespace;
-    });
-    fn();
-    curNamespace = origNamespace;
-  };
-
-  self.extend = function(name, fn) {
-    curNamespace[name] = function() {
-      var that = this;
-      var waiting = that._waiting;
-      var args = _.toArray(arguments);
-      var actor = that._active;
-      var untilClauses = that._untilClauses = [];
-      var scribeRequest = that._scribe.deferredRequest();
-
-      trace("promising", name, args);
-      var promise = Q.all([that._stash.substitute(args), waiting])
-      .spread( function(destashedArgs) {
-        return subUntilClauses(untilClauses, that._stash)
-        .then( function(untils) {
-          var doFn = function() {
-            return Q.nfapply(fn, destashedArgs);
-          };
-
-          var resPromise = untils.length > 0
-                           ? doUntil(doFn, untils, 10, 10000)
-                           : doFn();
-
-          scribeRequest(actor.alias, {method: name, args: destashedArgs}, resPromise);
-          resPromise.then(function() {
-            that._expectationsPassed += untils.length;
-          }, function(err) {
-            if (err instanceof expector.ExpectationError) {
-              that._expectationsFailed += 1;
-            }
-          });
-          return resPromise;
-        });
-      });
-
-      that._promises.push(promise);
-
-      return that;
-
-    };
-  };
-
-  self.request = function() {
-
-    var name, description, reqBuilderFn;  //expected args; description is optional
-    var args = _.toArray(arguments);
-
-    name = args.shift();
-    assert(_.isString(name));
-
-    reqBuilderFn = args.pop();
-    assert(_.isFunction(reqBuilderFn));
-
-    description = args.pop() || undefined;
-
-    var fullname = curNamespace.__name + "." + name;
-    curNamespace[name] = function() {
-      if (!this._concurrent) this.wait(this._config.delay);
-
-      var args = _.toArray(arguments);
-      var that = this;
-
-      trace("promising", name, args);
-      var promise = that._stash.substitute(args)
-                    .then( function(destashedArgs) {
-                      var req = reqBuilderFn.apply(null, destashedArgs);
-                      assert(req, "API request builder did not return a request: " + fullname);
-                      return req;
-                    });
-      that._promises.push(that._handleRequestPromise(promise));
-
-      return that;
-    };
-
-  };
-
-  self.POST = function() {
-    var args = _.toArray(arguments);
-    trace("POST", args);
-    return {method:"POST", path: args[0], body: args[1], headers: args[2]};
-  };
-
-  self.PUT = function() {
-    var args = _.toArray(arguments);
-    return {method:"PUT", path: args[0], body: args[1], headers: args[2]};
-  };
-
-  self.PATCH = function() {
-    var args = _.toArray(arguments);
-    return {method:"PATCH", path: args[0], body: args[1], headers: args[2]};
-  };
-
-  self.GET = function() {
-    var args = _.toArray(arguments);
-    return {method:"GET", path: args[0], headers: args[1]};
-  };
-
-  self.DELETE = function() {
-    var args = _.toArray(arguments);
-    return {method:"DELETE", path: args[0], headers: args[1]};
-  };
-
-  self.HEAD = function() {
-    var args = _.toArray(arguments);
-    return {method:"HEAD", path: args[0], headers: args[1]};
-  };
-
-  //TODO: this is lame.  upload is not a first class http method, but here i've model
-  //      it as one.  need something like super-agent attachments so file uploads can be added to
-  //      any POST.
-  self.upload = function() {
-    var args = _.toArray(arguments);
-    return {method:"upload", path: args[0], file: args[1], body: args[2], headers: args[3]};
-  };
-
-  self.req = function(req) {
-    return req;
-  };
-
-  return self;
-}());
-
-
 exports.driver = function() { return new Driver(); };
 exports.expector = expector;
-exports.api = api;
 exports.testing = {
   setHttpRequestFake: function(requestFn) {
     httpRequest = requestFn;
