@@ -10,22 +10,499 @@ var request = require("request"),
     url = require("url"),
     zlib = require("zlib");
 
+var Actor = function(alias) {
+  this.alias = alias;
+  this.jar = request.jar();
+};
 
-var trace = function() {
-  if (process.env.DRIVER_TRACE) {
-    console.log.apply(console, arguments);
-  }
+var Driver = function() {
+  this._concurrent = false;
+  this._resetPromises();
+  this._currentWait = null;
+
+  this.actors = [];
+  this._active = null;  //the current actor
+
+  this._stash = stash.makeStash();
+  this._nullScribing();
+  this._expectationsPassed = 0;
+  this._config = {
+    requestHeaders : {"Content-Type" : "application/json" },
+    requestEndpoint : "http://localhost",
+    delay: 0
+  };
+
+  return this;
+};
+
+Driver.prototype.config = function(opts) {
+  this._config = _.extend(_.clone(this._config), opts);
+  return this;
+};
+
+//
+// Actor commands
+//
+
+Driver.prototype.introduce = function(alias) {
+  this.actors[alias] = new Actor(alias);
+  this._active = this.actors[alias];
+  return this;
 };
 
 
-var logMessage = function(msg) {
+Driver.prototype.as = function(alias) {
+  if(! this.actors[alias]) {
+    throw new Error("Actor for alias["+alias+"] not found");
+  }
+  this._active = this.actors[alias];
+  return this;
+};
+
+
+//
+// Request commands
+//
+_.each(['POST', 'PUT', 'PATCH'], function(method) {
+  Driver.prototype[method] = function(path, body, opts) {
+    var req = _.extend({ method: method, path: path, body: body }, opts);
+    return this.request(req);
+  };
+});
+
+_.each(['DELETE', 'GET', 'HEAD'], function(method) {
+  Driver.prototype[method] = function(path, opts) {
+    var req = _.extend({ method: method, path: path }, opts);
+    return this.request(req);
+  };
+});
+
+Driver.prototype.upload = function (path, file, body, opts) {
+  var req = _.extend(
+    {method:"upload", path:path, body:body, file:file},
+    opts
+  );
+  return this.request(req);
+};
+
+Driver.prototype.req = function(req) {
+  trace("driver.request", req);
+  if (!this._concurrent) this.wait(this._config.delay);
+  this._promises.push(this._request(req));
+  return this;
+};
+
+Driver.prototype.request = Driver.prototype.req;
+
+
+//
+// Expectation commands
+//
+
+Driver.prototype.until = function() {
+  var args =_.toArray(arguments);
+  trace("driver.until", args);
+
+  if (args.length === 3) {
+    this._requestClauses.timeout = args.pop();
+  }
+
+  var stack = new Error().stack;
+  var expectation = argsToExpectation(args);
+
+  this._requestClauses.untils.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
+
+  return this;
+};
+
+
+Driver.prototype.never = function() {
+  var args =_.toArray(arguments);
+  trace("driver.never", args);
+
+  if (args.length === 3) {
+    this._requestClauses.timeout = args.pop();
+  }
+
+  var stack = new Error().stack;
+  var expectation = argsToExpectation(args);
+
+  this._requestClauses.nevers.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
+
+  return this;
+};
+
+Driver.prototype.expect = function() {
+  var args =_.toArray(arguments);
+  trace("driver.expect", args);
+
+  var stack = new Error().stack;
+  var expectation = argsToExpectation(args);
+
+  this._requestClauses.expectations.push(
+    this._stash.substitute(expectation)
+    .then( function(exp) {
+      return {
+        stack: stack,
+        expected: exp
+      };
+    })
+  );
+
+  return this;
+};
+
+//
+// Stashing
+//
+
+Driver.prototype.stash = function(key /*, [stashKeys...], [fn | value]*/) {
+  trace("stash:", key);
+  var that = this;
+
+  var options = _.toArray(arguments).slice(1);
+  var last = null;
+  var stashKeys = [];
+
+  if (options.length > 0) {
+    last = options.pop();
+  }
+
+  if (options.length > 0) {
+    stashKeys = options;
+  }
+
+
+  var promise;
+
+  // We only received a stash key.  Stash the last promise away
+  if (! last) {
+    promise = that._lastPromise().then( function(value) {
+      // return the parsed body if it exists, otherwise the text
+      return value.json || value.text || value;
+    });
+
+
+  // We received a function.  Apply it, and stash the result.
+  } else if (_.isFunction(last)) {
+
+    var numArgsAccepted = last.length;
+
+    // If the function accepts more args than stash keys, submit the result of our last
+    // promise/request as the final arg.
+    if (numArgsAccepted > stashKeys.length) {
+      promise = that._lastPromise();
+    } else {
+      promise = Q.fcall(function(){});
+    }
+
+    promise = Q.all([that._stash.substitute(stashKeys), promise])
+       .spread( function(stashVals, lastResult) {
+        lastResult = lastResult && (lastResult.json || lastResult.text);
+        return last.apply(null, stashVals.concat([lastResult]));
+      });
+
+  // We received a value.  Destash any stash keys in the value, then stash that result.
+  } else {
+    promise = that._stash.substitute(last);
+  }
+
+  that._stash.set(key, promise);
+  return that;
+};
+
+Driver.prototype.clearStash = function() {
+  var that = this;
+  that._stash.clear();
+  return this;
+};
+
+//
+// Execution timing commands
+//
+
+Driver.prototype.wait = function(millis) {
+  trace("driver.wait: " + millis || 0);
+  millis = millis || 0;
+  var lastPromise = _.last(this._promises);
+  this._currentWait = Q.all(this._promises)
+    .delay(millis)
+    .then(function() {
+      return lastPromise;
+    });
+  this._promises = [this._currentWait];
+  return this;
+};
+
+Driver.prototype.concurrent = function(fn) {
+  this.wait(this._config.delay);
+  this._concurrent = true;
+  fn();
+  this._concurrent = false;
+  return this;
+};
+
+//
+// Debugging commands
+//
+
+Driver.prototype.log = function(stashKey) {
+
+  if (stashKey === undefined) {
+    this._requestClauses.log = true;
+    return this;
+  }
+
+  stashKey = stashKey.toString().slice(1);
+  this._stash.getKeyPath(stashKey)
+  .then( function(stashResult) {
+    logMessage(":" + stashKey + " =\n" + util.inspect(stashResult, true, null, true));
+  }, function(err) {
+    if (err) return logMessage(err);
+  });
+  return this;
+};
+
+
+//
+// Miscellaneous commands
+//
+
+Driver.prototype.scribingOn = function(scribe) {
+  this._scribe = scribe;
+  return this;
+};
+
+Driver.prototype.scribingOff = function() {
+  this._nullScribing();
+  return this;
+};
+
+Driver.prototype.doc = function(message) {
+  var that = this;
+  that._scribe.doc(message);
+  return this;
+};
+
+Driver.prototype.results = function(fn) {
+  trace("driver.results");
+
+  var that = this;
+
+  // Wait for everything to finish, then consume
+  // the results and reset the state of the promises
+  Q.all( that._promises.concat(_.flatten([that._currentWait, that._stash.resolve()])))
+    .then( function() {
+      that._resetPromises();
+      fn(null, that._consumeResults());
+    }, function(err) {
+      if (err instanceof expector.ExpectationError ) {
+        var results = that._consumeResults();
+        results.err = err;
+        return fn(null, results);
+      }
+      fn(err, null);
+    })
+    .done();
+
+  return this;
+
+};
+
+//Deprecated
+Driver.prototype.on = function(emitter, evt, fn) {
+  var deferred = Q.defer();
+
+  emitter.once(evt, function() {
+    try {
+      var ret = fn ? fn.apply(emitter, arguments) : undefined;
+      deferred.resolve(ret);
+    }
+    catch (e) {
+      deferred.reject(e);
+      return;
+    }
+  });
+
+  this._promises.push(deferred.promise);
+
+  return this;
+};
+
+
+//
+// Private Helpers
+//
+
+Driver.prototype._request = function(req) {
+  var that = this;
+  var actor = that._active;
+  var scribeRequest = that._scribe.deferredRequest();
+
+  // Record clauses for the new request
+  var reqClauses = that._requestClauses = {
+    config: that._config,
+    untils: [],
+    nevers: [],
+    expectations: [],
+    log: false,
+    timeout: 10000,
+  };
+  defaultExpectation = null;
+  if (that._config.defaultExpectation) {
+    var defaultExpectation = {
+      stack: new Error().stack,
+      expected: {
+        body: that._config.defaultExpectation
+      }
+    };
+  }
+  return Q.all([
+    this._stash.substituteRoute(req.path || ""),
+    this._stash.substitute(_.omit(req, "path")),
+    resolveRequestClauses(reqClauses),
+    this._currentWait,
+  ])
+  .spread(function(path, reqOpts, reqClauses) {
+    trace("Done waiting:", req.path);
+    req = _.extend(reqOpts, {path: path});
+
+
+    // Handle making a single request, or looping
+    // for until or never.
+    var makeRequest = _.partial(
+      doRequest, actor.jar, req, reqConfig(reqClauses.config)
+    );
+    return (
+      reqClauses.untils.length > 0
+      ? doUntil(makeRequest, reqClauses.untils, 10, reqClauses.timeout)
+      : reqClauses.nevers.length > 0
+        ? doUntil(makeRequest, reqClauses.nevers, 10, reqClauses.timeout, true)
+        : makeRequest()
+    )
+
+    // Handle .log()
+    .then(function(result) {
+      if (reqClauses.log) {
+        logMessage(
+          util.inspect(_.omit(result, 'response'), true, null, true)
+        );
+      }
+      return result;
+    }, function(err) {
+      if (reqClauses.log) {
+        logMessage(
+          util.inspect(_.omit(err.actual, 'response'), true, null, true)
+        );
+      }
+      throw err;
+    })
+
+    // Handle expectations
+    .then( function(result) {
+      var expectations = reqClauses.expectations.length > 0
+        ? reqClauses.expectations
+        : defaultExpectation
+          ? [defaultExpectation]
+          : [];
+      return applyExpectations(result, expectations)
+      .then(function(result) {
+        scribeRequest(
+          actor.alias,
+          req,
+          result.response,
+          result.json || result.text
+        );
+        that._expectationsPassed
+          += reqClauses.untils.length
+          + reqClauses.nevers.length
+          + reqClauses.expectations.length;
+        return result;
+      });
+    });
+
+  });
+
+};
+
+Driver.prototype._resetPromises = function() {
+  this._promises = [];
+};
+
+// A quick way to assert that the request didn't end in error.  Usefult for checking
+// calls that are needed for your test flow but not actually the focus of your test.
+Driver.prototype._defaultExpectation = function(fn) {
+  this.expect(fn);
+  this._lastPromise()._isDefaultExpecation = true;
+  return this;
+};
+
+
+// Get the last promise.  Often grabbed to add on steps like expectations or stashing.
+Driver.prototype._lastPromise = function() {
+  return this._promises[ this._promises.length - 1 ];
+};
+
+
+Driver.prototype._consumeResults = function() {
+  var results = {
+    expectationsPassed : this._expectationsPassed,
+  };
+
+  this._expectationsPassed = 0;
+  return results;
+};
+
+Driver.prototype._nullScribing = function() {
+  var devnullScribe = function() {
+    var self = {};
+    self.deferredRequest = function() { return function() {}; };
+    self.doc = function() {};
+    return self;
+  };
+
+  this._scribe = devnullScribe();
+};
+
+exports.driver = function() { return new Driver(); };
+exports.expector = expector;
+exports.testing = {
+  setHttpRequestFake: function(requestFn) {
+    httpRequest = requestFn;
+  }
+};
+
+function trace() {
+  if (process.env.DRIVER_TRACE) {
+    console.log.apply(console, arguments);
+  }
+}
+
+
+function logMessage(msg) {
   console.log("log:");
   console.log("vvvvvvvvv");
   console.log(msg);
   console.log("^^^^^^^^^");
-};
+}
 
-var decode = function(data, encoding, callback) {
+function decode(data, encoding, callback) {
   if (encoding === 'gzip') {
     zlib.gunzip(data, function(err, decoded) {
       callback(err, decoded && decoded.toString("utf8"));
@@ -37,9 +514,9 @@ var decode = function(data, encoding, callback) {
   } else {
     callback(null, data.toString("utf8"));
   }
-};
+}
 
-var makeCookies = function(jar, url) {
+function makeCookies(jar, url) {
   return {
     get: function(name) {
       var cookies = jar.get({url: url});
@@ -52,9 +529,9 @@ var makeCookies = function(jar, url) {
     }
   };
 
-};
+}
 
-var makeResult = function(response, url, jar, profile, callback) {
+function makeResult(response, url, jar, profile, callback) {
   profile = _.clone(profile);
   profile.size = response.body.length;
   decode(
@@ -79,22 +556,26 @@ var makeResult = function(response, url, jar, profile, callback) {
       callback(null, result);
     }
   );
-};
+}
 
-var reqConfig = function(config) {
+function reqConfig(config) {
   var conf = {
     headers: config.requestHeaders,
   };
   _.extend(conf, url.parse(config.requestEndpoint));
   return conf;
-};
+}
 
 var httpRequest = function(opts) {
   return Q.nfcall(request, opts);
 };
 
-var doRequest = function(cookieJar, req, config) {
+function doRequest(cookieJar, req, config) {
   trace("doing request", req);
+
+  if (req.method === "upload") {
+    return doUpload(cookieJar, req, config);
+  }
 
   var headers = _.clone(config.headers);
   _.extend(headers, req.headers ? _.clone(req.headers) : {});
@@ -141,11 +622,9 @@ var doRequest = function(cookieJar, req, config) {
     );
   });
 
-};
+}
 
-var doUpload = function(cookieJar, req, config) {
-  var reqconf = reqConfig(config);
-
+function doUpload(cookieJar, req, reqconf) {
   var path = (reqconf.path || "/") + req.path;
   var headers = req.headers || {};
 
@@ -165,7 +644,7 @@ var doUpload = function(cookieJar, req, config) {
     return Q.nfcall(makeResult, response, url, cookieJar, profile);
     // return results;
   });
-};
+}
 
 
 //
@@ -184,7 +663,7 @@ var doUpload = function(cookieJar, req, config) {
 // if the until times out.
 //
 
-var doUntil = function(fn, expectations, delay, timeout, negate) {
+function doUntil(fn, expectations, delay, timeout, negate) {
 
   // Montior time spent to compare against timeout
   var start = new Date().getTime();
@@ -242,13 +721,13 @@ var doUntil = function(fn, expectations, delay, timeout, negate) {
       return next(err);
     });
   });
-};
+}
 
 var existy = function(val) {
   return (val !== undefined && val !== null);
 };
 
-var argsToExpectation = function(args) {
+function argsToExpectation(args) {
   args = _.clone(args);
   var expected = {};
   expected.statusCode = _.isNumber(args[0]) ? args.shift() : undefined;
@@ -256,9 +735,9 @@ var argsToExpectation = function(args) {
   assert( existy(expected.statusCode) || existy(expected.body),
           "Invalid expectation: " + util.inspect(expected));
   return expected;
-};
+}
 
-var applyExpectations = function(result, expectations) {
+function applyExpectations(result, expectations) {
   return Q.all(_.map(expectations, function(expectation) {
     return expector.expect(
       result,
@@ -269,9 +748,9 @@ var applyExpectations = function(result, expectations) {
   .then(function() {
     return result;
   });
-};
+}
 
-var resolveRequestClauses = function(requestClauses) {
+function resolveRequestClauses(requestClauses) {
   return Q.all([
     Q.all(requestClauses.untils),
     Q.all(requestClauses.nevers),
@@ -286,527 +765,4 @@ var resolveRequestClauses = function(requestClauses) {
     resolved.expectations = expectations;
     return resolved;
   });
-};
-
-
-
-var Actor = function(alias) {
-  this.alias = alias;
-  this.jar = request.jar();
-};
-
-var Driver = function() {
-  this._concurrent = false;
-  this._resetPromises();
-
-  this.actors = [];
-  this._active = null;  //the current actor
-
-  this._stash = stash.makeStash();
-  this._nullScribing();
-  this._expectationsPassed = 0;
-  this._expectationsFailed = 0;
-  this._config = {
-    requestHeaders : {"Content-Type" : "application/json" },
-    requestEndpoint : "http://localhost",
-    delay: 0
-  };
-
-  return this;
-};
-
-Driver.prototype._resetPromises = function() {
-  this._waiting = Q();
-  this._promises = [];
-};
-
-
-//
-// commands: the user facing api for driver.
-//
-
-var actor_commands = {};
-
-actor_commands.introduce = function(alias) {
-  this.actors[alias] = new Actor(alias);
-  this._active = this.actors[alias];
-  return this;
-};
-
-
-actor_commands.as = function(alias) {
-  if(! this.actors[alias]) {
-    throw new Error("Actor for alias["+alias+"] not found");
-  }
-
-  this._active = this.actors[alias];
-  return this;
-};
-
-
-
-var http_commands = {};
-
-http_commands.POST = function(path, body, headers) {
-  this._handleRequest( {method:"POST", path:path, body:body, headers:headers} );
-  return this;
-};
-
-
-http_commands.PUT = function (path, body, headers) {
-  this._handleRequest( {method:"PUT", path:path, body:body, headers:headers} );
-  return this;
-};
-
-http_commands.PATCH = function (path, body, headers) {
-  this._handleRequest( {method:"PATCH", path:path, body:body, headers:headers} );
-  return this;
-};
-
-http_commands.DELETE = function (path, headers) {
-  this._handleRequest( {method:"DELETE", path:path, headers:headers} );
-  return this;
-};
-
-http_commands.GET = function (path, headers) {
-  this._handleRequest( {method:"GET", path:path, headers:headers} );
-  return this;
-};
-
-http_commands.HEAD = function (path, headers) {
-  this._handleRequest( {method:"HEAD", path:path, headers:headers} );
-  return this;
-};
-
-http_commands.upload = function (path, file, body, headers) {
-  this._handleRequest({method:"upload", path:path, body:body, file:file, headers:headers});
-  return this;
-};
-
-http_commands.req = function(req) {
-  this._handleRequest(req);
-  return this;
-};
-
-var assertion_commands = {};
-
-// A quick way to assert that the request didn't end in error.  Usefult for checking
-// calls that are needed for your test flow but not actually the focus of your test.
-assertion_commands.ok = function() {
-  this.expect(function(result) {
-    assert(
-      [200, 201, 202, 203, 204].indexOf(result.statusCode) != -1,
-      "Expected ok (2xx), but got http status code: " + result.statusCode +
-      "\nResponse Body:\n"+JSON.stringify(result.json, null, 4)
-    );
-    return true;
-  });
-  return this;
-};
-
-
-
-assertion_commands.until = function() {
-  var args =_.toArray(arguments);
-  trace("driver.until", args);
-
-  if (args.length === 3) {
-    this._requestClauses.timeout = args.pop();
-  }
-  var stack = new Error().stack;
-  var expectation = argsToExpectation(args);
-
-  this._requestClauses.untils.push(
-    this._stash.substitute(expectation)
-    .then( function(exp) {
-      return {
-        stack: stack,
-        expected: exp
-      };
-    })
-  );
-
-  return this;
-};
-
-
-assertion_commands.never = function() {
-  var args =_.toArray(arguments);
-  trace("driver.never", args);
-
-  if (args.length === 3) {
-    this._requestClauses.timeout = args.pop();
-  }
-
-  var stack = new Error().stack;
-  var expectation = argsToExpectation(args);
-
-  this._requestClauses.nevers.push(
-    this._stash.substitute(expectation)
-    .then( function(exp) {
-      return {
-        stack: stack,
-        expected: exp
-      };
-    })
-  );
-
-  return this;
-};
-
-assertion_commands.expect = function() {
-  var args =_.toArray(arguments);
-  trace("driver.expect", args);
-
-  var stack = new Error().stack;
-  var expectation = argsToExpectation(args);
-
-  this._requestClauses.expectations.push(
-    this._stash.substitute(expectation)
-    .then( function(exp) {
-      return {
-        stack: stack,
-        expected: exp
-      };
-    })
-  );
-
-  return this;
-};
-
-var control_commands = {};
-
-control_commands.config = function(opts) {
-  this._config = _.extend(_.clone(this._config), opts);
-  return this;
-};
-
-control_commands.stash = function(key /*, [stashKeys...], [fn | value]*/) {
-  trace("stash:", key);
-  var that = this;
-
-  var options = _.toArray(arguments).slice(1);
-  var last = null;
-  var stashKeys = [];
-
-  if (options.length > 0) {
-    last = options.pop();
-  }
-
-  if (options.length > 0) {
-    stashKeys = options;
-  }
-
-
-  var promise;
-
-  // We only received a stash key.  Stash the last promise away
-  if (! last) {
-    promise = that._lastPromise().then( function(value) {
-      // return the parsed body if it exists, otherwise the text
-      return value.json || value.text || value;
-    });
-
-
-  // We received a function.  Apply it, and stash the result.
-  } else if (_.isFunction(last)) {
-
-    var numArgsAccepted = last.length;
-
-    // If the function accepts more args than stash keys, submit the result of our last
-    // promise/request as the final arg.
-    if (numArgsAccepted > stashKeys.length) {
-      promise = that._lastPromise();
-    } else {
-      promise = Q.fcall(function(){});
-    }
-
-    promise = Q.all([that._stash.substitute(stashKeys), promise])
-       .spread( function(stashVals, lastResult) {
-        lastResult = lastResult && (lastResult.json || lastResult.text);
-        return last.apply(null, stashVals.concat([lastResult]));
-      });
-
-  // We received a value.  Destash any stash keys in the value, then stash that result.
-  } else {
-    promise = that._stash.substitute(last);
-  }
-
-  that._stash.stash(key, promise);
-  return that;
-};
-
-control_commands.clearStash = function() {
-  var that = this;
-  that._stash.clear();
-  return this;
-};
-
-
-control_commands.wait = function(millis) {
-  millis = millis || 0;
-  var oldWaiting = this._waiting;
-  var outstanding = [oldWaiting];
-  outstanding = outstanding.concat(this._promises);
-  this._promises = [];
-  this._waiting = Q.all(outstanding).then(function() { return Q.delay(millis); } );
-  return this;
-};
-
-control_commands.concurrent = function(fn) {
-  this._concurrent = true;
-  fn();
-  this._concurrent = false;
-  return this;
-};
-
-control_commands.results = function(fn) {
-  trace("driver.results");
-
-  var that = this;
-
-  // Wait for everything to finish, then consume
-  // the results and reset the state of the promises
-  Q.all( that._promises.concat(that._waiting).concat(that._stash.allPromises()) )
-    .then( function() {
-      that._resetPromises();
-      fn(null, that._consumeResults());
-    }, function(err) {
-      if (err instanceof expector.ExpectationError ) {
-        var results = that._consumeResults();
-        results.err = err;
-        return fn(null, results);
-      }
-      fn(err, null);
-    })
-    .done();
-
-  return this;
-
-};
-
-
-//Errr... please don't use this.  This is not a driver pattern
-//that has been discussed.
-control_commands.on = function(emitter, evt, fn) {
-  var deferred = Q.defer();
-
-  emitter.once(evt, function() {
-    try {
-      var ret = fn ? fn.apply(emitter, arguments) : undefined;
-      deferred.resolve(ret);
-    }
-    catch (e) {
-      deferred.reject(e);
-      return;
-    }
-  });
-
-  this._promises.push(deferred.promise);
-
-  return this;
-};
-
-var instrument_commands = {};
-
-instrument_commands.log = function(stashKey) {
-
-  if (stashKey === undefined) {
-    this._requestClauses.log = true;
-
-    // this._lastPromise().then( function(data) {
-    //   if (data) {
-    //     // Too much junk in result.response
-    //     data = _.clone(data);
-    //     delete data.response;
-    //     logMessage(util.inspect(data, true, null, true));
-    //   }
-    // }, function(err) {
-    //     logMessage(err);
-    //   }
-    // );
-    return this;
-  }
-
-  stashKey = stashKey.toString().slice(1);
-  this._stash.destashKeyPath(stashKey)
-  .then( function(stashResult) {
-    logMessage(":" + stashKey + " =\n" + util.inspect(stashResult, true, null, true));
-  }, function(err) {
-    if (err) return logMessage(err);
-  });
-  return this;
-};
-
-instrument_commands.scribingOn = function(scribe) {
-  this._scribe = scribe;
-  return this;
-};
-
-instrument_commands.scribingOff = function() {
-  this._nullScribing();
-  return this;
-};
-
-instrument_commands.doc = function(message) {
-  var that = this;
-  that._scribe.doc(message);
-  return this;
-};
-
-_.extend(
-  Driver.prototype,
-  actor_commands,
-  http_commands,
-  assertion_commands,
-  control_commands,
-  instrument_commands
-);
-
- //
- // Helper functions for handling http reequests
- //
-
-Driver.prototype._handleRequest = function(req) {
-  trace("driver._handleRequest", req);
-  if (!this._concurrent) this.wait(this._config.delay);
-
-  var subbingPath = this._stash.substituteRoute(req.path || "");
-  var subbingRest = this._stash.substitute(_.omit(req, "path"));
-  var subbingReq = Q.all([subbingPath, subbingRest])
-  .spread(function(path, rest) {
-    rest.path = path;
-    return rest;
-  });
-  this._promises.push( this._handleRequestPromise(subbingReq, req) );
-};
-
-Driver.prototype._handleRequestPromise = function(reqPromise, reqTemplate) {
-  trace("driver._handleRequestPromise", reqPromise);
-  var that = this;
-  var actor = that._active;
-  var scribeRequest = that._scribe.deferredRequest();
-
-  // Recording clauses for the new request.
-  var reqClauses = that._requestClauses = {
-    config: that._config,
-    untils: [],
-    nevers: [],
-    expectations: [],
-    log: false,
-    timeout: 10000,
-  };
-  defaultExpectation = null;
-  if (that._config.defaultExpectation) {
-    var defaultExpectation = {
-      stack: new Error().stack,
-      expected: {
-        body: that._config.defaultExpectation
-      }
-    };
-  }
-
-  return Q.all([reqPromise, resolveRequestClauses(reqClauses), that._waiting])
-  .spread(function(req, reqClauses) {
-    trace("done waiting:", req.path);
-
-    var request = function() {
-      if (req.method === "upload") {
-        return doUpload(actor.jar, req, reqClauses.config);
-      }
-      return doRequest(actor.jar, req, reqConfig(reqClauses.config));
-    };
-
-    var resPromise = reqClauses.untils.length > 0
-                     ? doUntil(request, reqClauses.untils, 10, reqClauses.timeout)
-                     : request();
-
-    if (reqClauses.nevers.length > 0) {
-      resPromise = resPromise.then(function(result) {
-        return doUntil(request, reqClauses.nevers, 10, reqClauses.timeout, true).then(function() {
-          return result;
-        });
-      });
-    }
-
-    if (reqClauses.log) {
-      resPromise.then(function(result) {
-        // Too much junk in result.response
-        result = _.clone(result);
-        delete result.response;
-        logMessage(util.inspect(result, true, null, true));
-      }, function(err) {
-          logMessage(err);
-        }
-      );
-    }
-
-    var onExpectations = resPromise.then( function(result) {
-      if (reqClauses.expectations.length > 0) {
-        return applyExpectations(result, reqClauses.expectations);
-      }
-//      if (! (reqClauses.untils.length || reqClauses.nevers.length)) {
-        return applyExpectations(result, defaultExpectation ? [defaultExpectation] : []);
-//      }
-    });
-
-    scribeRequest(actor.alias, req, onExpectations, reqTemplate);
-
-    onExpectations.then(function() {
-      that._expectationsPassed += reqClauses.untils.length;
-      that._expectationsPassed += reqClauses.expectations.length;
-    }, function(err) {
-      if (err instanceof expector.ExpectationError) {
-        that._expectationsFailed += 1;
-      }
-    });
-
-    return onExpectations;
-  });
-
-};
-
-// A quick way to assert that the request didn't end in error.  Usefult for checking
-// calls that are needed for your test flow but not actually the focus of your test.
-Driver.prototype._defaultExpectation = function(fn) {
-  this.expect(fn);
-  this._lastPromise()._isDefaultExpecation = true;
-  return this;
-};
-
-
-// Get the last promise.  Often grabbed to add on steps like expectations or stashing.
-Driver.prototype._lastPromise = function() {
-  return this._promises[ this._promises.length - 1 ];
-};
-
-
-Driver.prototype._consumeResults = function() {
-  var results = {
-    expectationsPassed : this._expectationsPassed,
-    expectationsFailed : this._expectationsFailed
-  };
-
-  this._expectationsPassed = 0;
-  this._expectationsFailed = 0;
-  return results;
-};
-
-Driver.prototype._nullScribing = function() {
-  var devnullScribe = function() {
-    var self = {};
-    self.deferredRequest = function() { return function() {}; };
-    self.doc = function() {};
-    return self;
-  };
-
-  this._scribe = devnullScribe();
-};
-
-exports.driver = function() { return new Driver(); };
-exports.expector = expector;
-exports.testing = {
-  setHttpRequestFake: function(requestFn) {
-    httpRequest = requestFn;
-  }
-};
+}

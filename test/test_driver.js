@@ -88,7 +88,7 @@ var assertCalls = function(driver, method, reqMemo, done) {
   driver.results( function() {
     assert.strictEqual(method, reqMemo.lastReq.method);
     done();
-  });
+  }, done);
 };
 
 var assertRequested = function(driver, req, reqMemo, done) {
@@ -150,7 +150,7 @@ suite("Driver Basics", function() {
       .introduce("user")
       .GET("succeed");
 
-    assertDriverOutput(driver,  null, {expectationsPassed:0, expectationsFailed:0}, done);
+    assertDriverOutput(driver,  null, {expectationsPassed:0}, done);
   });
 
   test("successful expectation", function(done) {
@@ -160,19 +160,8 @@ suite("Driver Basics", function() {
       .GET("succeed")
       .expect(200, SUCCESS_BODY);
 
-    assertDriverResults(driver, {expectationsPassed:1, expectationsFailed:0}, done);
+    assertDriverResults(driver, {expectationsPassed:1}, done);
   });
-
-  test("ok passes", function(done) {
-    var driver = drive.driver();
-    driver
-      .introduce("user")
-      .GET("succeed")
-      .ok();
-
-    assertDriverOutput(driver, null, {expectationsPassed:0, expectationsFailed:0}, done);
-  });
-
 
   test("http calls made", function(done) {
     var driver = drive.driver();
@@ -182,7 +171,7 @@ suite("Driver Basics", function() {
 
     assertCalls(driver, "GET", reqMemo, function() {
 
-      driver.POST();
+      driver.POST("/some");
       assertCalls(driver, "POST", reqMemo, function() {
 
         driver.PUT();
