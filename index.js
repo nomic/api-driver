@@ -1,6 +1,7 @@
 "use strict";
-var request = require("request"),
-    Q = require("q"),
+var Promise = require("bluebird"),
+    request = require("request"),
+    prequest = Promise.promisify(request),
     _ = require("underscore"),
     assert = require("assert"),
     util = require('util'),
@@ -209,10 +210,10 @@ Driver.prototype.stash = function(key /*, [stashKeys...], [fn | value]*/) {
     if (numArgsAccepted > stashKeys.length) {
       promise = that._lastPromise();
     } else {
-      promise = Q.fcall(function(){});
+      promise = Promise.try(function(){});
     }
 
-    promise = Q.all([that._stash.substitute(stashKeys), promise])
+    promise = Promise.all([that._stash.substitute(stashKeys), promise])
        .spread( function(stashVals, lastResult) {
         lastResult = lastResult && (lastResult.json || lastResult.text);
         return last.apply(null, stashVals.concat([lastResult]));
@@ -241,7 +242,7 @@ Driver.prototype.wait = function(millis) {
   trace("driver.wait: " + millis || 0);
   millis = millis || 0;
   var lastPromise = _.last(this._promises);
-  this._currentWait = Q.all(this._promises)
+  this._currentWait = Promise.all(this._promises)
     .delay(millis)
     .then(function() {
       return lastPromise;
@@ -307,7 +308,7 @@ Driver.prototype.results = function(fn) {
 
   // Wait for everything to finish, then consume
   // the results and reset the state of the promises
-  Q.all( that._promises.concat(_.flatten([that._currentWait, that._stash.resolve()])))
+  Promise.all( that._promises.concat(_.flatten([that._currentWait, that._stash.resolve()])))
     .then( function() {
       that._resetPromises();
       fn(null, that._consumeResults());
@@ -327,20 +328,19 @@ Driver.prototype.results = function(fn) {
 
 //Deprecated
 Driver.prototype.on = function(emitter, evt, fn) {
-  var deferred = Q.defer();
+  var promise = Promise.promisify(function(callback) {
+    emitter.once(evt, function() {
+      try {
+        var ret = fn ? fn.apply(emitter, arguments) : undefined;
+        return callback(null, ret);
+      }
+      catch (e) {
+        return callback(e);
+      }
+    });
+  })();
 
-  emitter.once(evt, function() {
-    try {
-      var ret = fn ? fn.apply(emitter, arguments) : undefined;
-      deferred.resolve(ret);
-    }
-    catch (e) {
-      deferred.reject(e);
-      return;
-    }
-  });
-
-  this._promises.push(deferred.promise);
+  this._promises.push(promise);
 
   return this;
 };
@@ -373,10 +373,16 @@ Driver.prototype._request = function(req) {
       }
     };
   }
-  return Q.all([
+  return Promise.all([
     this._stash.substituteRoute(req.path || ""),
     this._stash.substitute(_.omit(req, "path")),
-    resolveRequestClauses(reqClauses),
+    // delay resolution of reqClauses because they
+    // still need to be filled syncronously but subsequent
+    // driver commands
+    Promise.cast(null).then(
+      function() {
+        return resolveRequestClauses(reqClauses);
+    }),
     this._currentWait,
   ])
   .spread(function(path, reqOpts, reqClauses) {
@@ -502,7 +508,7 @@ function logMessage(msg) {
   console.log("^^^^^^^^^");
 }
 
-function decode(data, encoding, callback) {
+function _decode(data, encoding, callback) {
   if (encoding === 'gzip') {
     zlib.gunzip(data, function(err, decoded) {
       callback(err, decoded && decoded.toString("utf8"));
@@ -515,6 +521,7 @@ function decode(data, encoding, callback) {
     callback(null, data.toString("utf8"));
   }
 }
+var decode = Promise.promisify(_decode);
 
 function makeCookies(jar, url) {
   return {
@@ -531,31 +538,29 @@ function makeCookies(jar, url) {
 
 }
 
-function makeResult(response, url, jar, profile, callback) {
+function makeResult(response, url, jar, profile) {
   profile = _.clone(profile);
   profile.size = response.body.length;
-  decode(
+  return decode(
     response.body,
-    response.headers['content-encoding'],
-    function(err, decoded) {
-      profile.sizeDecoded = decoded.length;
-      if (err) return callback(err);
+    response.headers['content-encoding']
+  ).then(function(decoded) {
+    profile.sizeDecoded = decoded.length;
 
-      var result = {};
-      result.text = decoded || null;
-      try {
-        result.json = JSON.parse(result.text);
-      } catch(e) {
-        result.json = null;
-      }
-      result.response = response;
-      result.cookies = makeCookies(jar, url);
-      result.headers = response.headers;
-      result.statusCode = response.statusCode;
-      result.profile = profile;
-      callback(null, result);
+    var result = {};
+    result.text = decoded || null;
+    try {
+      result.json = JSON.parse(result.text);
+    } catch(e) {
+      result.json = null;
     }
-  );
+    result.response = response;
+    result.cookies = makeCookies(jar, url);
+    result.headers = response.headers;
+    result.statusCode = response.statusCode;
+    result.profile = profile;
+    return result;
+  });
 }
 
 function reqConfig(config) {
@@ -567,7 +572,7 @@ function reqConfig(config) {
 }
 
 var httpRequest = function(opts) {
-  return Q.nfcall(request, opts);
+  return prequest(opts);
 };
 
 function doRequest(cookieJar, req, config) {
@@ -610,8 +615,7 @@ function doRequest(cookieJar, req, config) {
   return httpRequest(opts)
   .spread( function(response) {
     var end = new Date().getTime();
-    return Q.nfcall(
-      makeResult,
+    return makeResult(
       response,
       url,
       cookieJar,
@@ -628,20 +632,21 @@ function doUpload(cookieJar, req, reqconf) {
   var path = (reqconf.path || "/") + req.path;
   var headers = req.headers || {};
 
-  return Q.nfcall( upload.upload,
-                   cookieJar,
-                   headers,
-                   reqconf.protocol,
-                   reqconf.hostname,
-                   reqconf.port,
-                   path,
-                   req.file,
-                   req.body )
+  return upload.upload(
+    cookieJar,
+    headers,
+    reqconf.protocol,
+    reqconf.hostname,
+    reqconf.port,
+    path,
+    req.file,
+    req.body
+  )
   .spread( function(response, __, profile) {
     var url = reqconf.protocol
               + "//" + reqconf.hostname + (reqconf.port ? ":" + reqconf.port : "")
               + path;
-    return Q.nfcall(makeResult, response, url, cookieJar, profile);
+    return makeResult(response, url, cookieJar, profile);
     // return results;
   });
 }
@@ -677,7 +682,7 @@ function doUntil(fn, expectations, delay, timeout, negate) {
       if (negate) {
         return result;
       } else {
-        return Q.reject(err);
+        return Promise.reject(err);
       }
     }
 
@@ -693,18 +698,18 @@ function doUntil(fn, expectations, delay, timeout, negate) {
 
     //Not out of time, so let's delay and then try again, with
     //the updated timeout.
-    return Q.delay(delay).then(function() {
+    return Promise.delay(delay).then(function() {
       return doUntil(fn, expectations, Math.min(delay*delay, 1000), newTimeout, negate);
     });
   };
 
   return fn()
   .then( function(result) {
-    return Q.all(_.map(expectations, function(exp) {
+    return Promise.all(_.map(expectations, function(exp) {
       return expector.expect(result, exp.expected, exp.stack)
       .then(function() {
         if (negate) {
-          return Q.reject(expector.fail(
+          return Promise.reject(expector.fail(
             'One or more expectations succeeded which should not have',
             'Predicate Failure',
             exp.stack
@@ -738,7 +743,7 @@ function argsToExpectation(args) {
 }
 
 function applyExpectations(result, expectations) {
-  return Q.all(_.map(expectations, function(expectation) {
+  return Promise.all(_.map(expectations, function(expectation) {
     return expector.expect(
       result,
       expectation.expected,
@@ -751,10 +756,10 @@ function applyExpectations(result, expectations) {
 }
 
 function resolveRequestClauses(requestClauses) {
-  return Q.all([
-    Q.all(requestClauses.untils),
-    Q.all(requestClauses.nevers),
-    Q.all(requestClauses.expectations)
+  return Promise.all([
+    Promise.all(requestClauses.untils),
+    Promise.all(requestClauses.nevers),
+    Promise.all(requestClauses.expectations)
   ]).spread( function(untils, nevers, expectations) {
     // don't do this before the promises are evaluated
     // are the driver script won't have a chance to have

@@ -5,7 +5,7 @@ var assert = require('assert'),
     expector = require('../lib/expector'),
     cje = expector.test.checkJSONExpression,
     expectFn = expector.test.expectFn,
-    Q = require("q");
+    Promise = require("bluebird");
 
 
 suite('checkJSONExpresion', function() {
@@ -79,11 +79,11 @@ suite('checkJSONExpresion', function() {
 
 suite('expector.expect', function() {
   test('custom expectation function', function(done) {
-    Q.all([
+    Promise.all([
       expectFn({}, function() {}),
       expectFn({}, function() {return false;}),
 //      expectFn({}, function() {return Q(1);}),
-      expectFn({}, function() {return Q.reject();})
+      expectFn({}, function() {return Promise.reject();})
       .then(function() {
         assert(false, "should have failed on rejected promise");
       }, function(){}),

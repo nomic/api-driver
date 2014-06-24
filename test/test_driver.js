@@ -4,7 +4,7 @@
 var drive = require("../index"),
     expector = drive.expector,
     assert = require("assert"),
-    Q = require("q");
+    Promise = require("bluebird");
 
 var SUCCESS_BODY = {result: "success"};
 var SUCCESS_RESPONSE = {statusCode: 200, json: SUCCESS_BODY};
@@ -14,7 +14,7 @@ var NOT_FOUND_RESPONSE = {statusCode: 404, json: {result: "not found"}};
 function makeRequestFake(memo) {
 
   function responseFake(opts) {
-    return Q.all([{
+    return Promise.all([{
       statusCode: opts.statusCode,
       body: JSON.stringify(opts.json),
       headers: opts.headers || []
@@ -39,7 +39,7 @@ function makeRequestFake(memo) {
       return responseFake({statusCode: 200, json:req.body});
     }
     if (hasPath(req, "error")) {
-      return Q.fcall(function() { throw new Error(); });
+      return Promise.try(function() { throw new Error(); });
     }
 
     return responseFake(NOT_FOUND_RESPONSE);
