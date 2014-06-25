@@ -13,12 +13,12 @@ var Promise = require("bluebird"),
     sequential = require("./lib/dispatch").sequential,
     concurrent = require("./lib/dispatch").concurrent;
 
-var Actor = function(alias) {
+function Actor(alias) {
   this.alias = alias;
   this.jar = request.jar();
-};
+}
 
-var Driver = function() {
+function Driver() {
   this._dispatcher = sequential();
 
   this.actors = [];
@@ -34,7 +34,7 @@ var Driver = function() {
   };
 
   return this;
-};
+}
 
 Driver.prototype.config = function(opts) {
   this._config = _.extend(_.clone(this._config), opts);
