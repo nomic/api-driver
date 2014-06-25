@@ -9,7 +9,9 @@ var Promise = require("bluebird"),
     expector = require('./lib/expector'),
     stash = require('./lib/stash'),
     url = require("url"),
-    zlib = require("zlib");
+    zlib = require("zlib"),
+    serial = require("./lib/dispatch").serial,
+    parallel = require("./lib/dispatch").parallel;
 
 var Actor = function(alias) {
   this.alias = alias;
@@ -17,9 +19,7 @@ var Actor = function(alias) {
 };
 
 var Driver = function() {
-  this._concurrent = false;
-  this._resetPromises();
-  this._currentWait = null;
+  this._dispatcher = serial();
 
   this.actors = [];
   this._active = null;  //the current actor
@@ -89,7 +89,7 @@ Driver.prototype.upload = function (path, file, body, opts) {
 Driver.prototype.req = function(req) {
   trace("driver.request", req);
   if (!this._concurrent) this.wait(this._config.delay);
-  this._promises.push(this._request(req));
+  this._request(req);
   return this;
 };
 
@@ -178,53 +178,41 @@ Driver.prototype.stash = function(key /*, [stashKeys...], [fn | value]*/) {
   var that = this;
 
   var options = _.toArray(arguments).slice(1);
-  var last = null;
+  var stashable = null;
   var stashKeys = [];
 
   if (options.length > 0) {
-    last = options.pop();
+    stashable = options.pop();
   }
 
   if (options.length > 0) {
     stashKeys = options;
   }
 
+  this._stash.set(
+    key,
+    new Promise(function(resolve) {
+      if (stashable && ! _.isFunction(stashable)) {
+        resolve(stashable);
+      } else {
+        var onStashVals = stashKeys.length
+          ? that._stash.substitute(stashKeys)
+          : Promise.cast([]);
 
-  var promise;
-
-  // We only received a stash key.  Stash the last promise away
-  if (! last) {
-    promise = that._lastPromise().then( function(value) {
-      // return the parsed body if it exists, otherwise the text
-      return value.json || value.text || value;
-    });
-
-
-  // We received a function.  Apply it, and stash the result.
-  } else if (_.isFunction(last)) {
-
-    var numArgsAccepted = last.length;
-
-    // If the function accepts more args than stash keys, submit the result of our last
-    // promise/request as the final arg.
-    if (numArgsAccepted > stashKeys.length) {
-      promise = that._lastPromise();
-    } else {
-      promise = Promise.try(function(){});
-    }
-
-    promise = Promise.all([that._stash.substitute(stashKeys), promise])
-       .spread( function(stashVals, lastResult) {
-        lastResult = lastResult && (lastResult.json || lastResult.text);
-        return last.apply(null, stashVals.concat([lastResult]));
-      });
-
-  // We received a value.  Destash any stash keys in the value, then stash that result.
-  } else {
-    promise = that._stash.substitute(last);
-  }
-
-  that._stash.set(key, promise);
+        that._requestClauses.stashResolvers.push(function(value) {
+          var body = value.json || value.text || value;
+          if (! stashable) {
+            resolve(body);
+          } else {
+            onStashVals.then(function(stashVals) {
+              resolve( stashable.apply(null, stashVals.concat([body])) );
+            })
+            .done();
+          }
+        });
+      }
+    })
+  );
   return that;
 };
 
@@ -241,21 +229,18 @@ Driver.prototype.clearStash = function() {
 Driver.prototype.wait = function(millis) {
   trace("driver.wait: " + millis || 0);
   millis = millis || 0;
-  var lastPromise = _.last(this._promises);
-  this._currentWait = Promise.all(this._promises)
-    .delay(millis)
-    .then(function() {
-      return lastPromise;
-    });
-  this._promises = [this._currentWait];
+  this._dispatcher.wait(millis);
   return this;
 };
 
 Driver.prototype.concurrent = function(fn) {
   this.wait(this._config.delay);
-  this._concurrent = true;
+
+  var formerDispatcher = this._dispatcher;
+  this._dispatcher = parallel();
+  formerDispatcher.add(this._dispatcher);
   fn();
-  this._concurrent = false;
+  this._dispatcher = formerDispatcher;
   return this;
 };
 
@@ -308,39 +293,46 @@ Driver.prototype.results = function(fn) {
 
   // Wait for everything to finish, then consume
   // the results and reset the state of the promises
-  Promise.all( that._promises.concat(_.flatten([that._currentWait, that._stash.resolve()])))
-    .then( function() {
-      that._resetPromises();
-      fn(null, that._consumeResults());
-    }, function(err) {
-      if (err instanceof expector.ExpectationError ) {
-        var results = that._consumeResults();
-        results.err = err;
-        return fn(null, results);
-      }
-      fn(err, null);
-    })
-    .done();
+  Promise.join(
+    this._dispatcher.dispatch(),
+    that._stash.resolve()
+  )
+  .then(function () {
+    fn(null, that._consumeResults());
+  }, function(err) {
+    if (err instanceof expector.ExpectationError ) {
+      var results = that._consumeResults();
+      results.err = err;
+      return fn(null, results);
+    }
+    fn(err, null);
+  })
+  .done();
 
   return this;
 
 };
 
 //Deprecated
-Driver.prototype.on = function(emitter, evt, fn) {
-  var promise = Promise.promisify(function(callback) {
-    emitter.once(evt, function() {
-      try {
-        var ret = fn ? fn.apply(emitter, arguments) : undefined;
-        return callback(null, ret);
-      }
-      catch (e) {
-        return callback(e);
-      }
+Driver.prototype.on = function(emitter, evt, fn, stashKey) {
+  var that = this;
+  that._stash.set(stashKey, new Promise(function(resolver) {
+    that._dispatcher.addTask(function() {
+      return Promise.promisify(function(callback) {
+        emitter.once(evt, function() {
+          try {
+            var ret = fn ? fn.apply(emitter, arguments) : undefined;
+            return callback(null, ret);
+          }
+          catch (e) {
+            return callback(e);
+          }
+        });
+      })()
+      .then(resolver);
     });
-  })();
 
-  this._promises.push(promise);
+  }));
 
   return this;
 };
@@ -363,6 +355,7 @@ Driver.prototype._request = function(req) {
     expectations: [],
     log: false,
     timeout: 10000,
+    stashResolvers: [],
   };
   defaultExpectation = null;
   if (that._config.defaultExpectation) {
@@ -373,98 +366,75 @@ Driver.prototype._request = function(req) {
       }
     };
   }
-  return Promise.all([
-    this._stash.substituteRoute(req.path || ""),
-    this._stash.substitute(_.omit(req, "path")),
-    // delay resolution of reqClauses because they
-    // still need to be filled syncronously but subsequent
-    // driver commands
-    Promise.cast(null).then(
-      function() {
-        return resolveRequestClauses(reqClauses);
-    }),
-    this._currentWait,
-  ])
-  .spread(function(path, reqOpts, reqClauses) {
-    trace("Done waiting:", req.path);
-    req = _.extend(reqOpts, {path: path});
+  this.wait(that._config._delay);
+  that._dispatcher.addTask(function() {
+    return Promise.all([
+      that._stash.substituteRoute(req.path || ""),
+      that._stash.substitute(_.omit(req, "path")),
+      resolveRequestClauses(reqClauses)
+    ])
+    .spread(function(path, reqOpts, reqClauses) {
+      trace("Done waiting:", req.path);
+      req = _.extend(reqOpts, {path: path});
 
 
-    // Handle making a single request, or looping
-    // for until or never.
-    var makeRequest = _.partial(
-      doRequest, actor.jar, req, reqConfig(reqClauses.config)
-    );
-    return (
-      reqClauses.untils.length > 0
-      ? doUntil(makeRequest, reqClauses.untils, 10, reqClauses.timeout)
-      : reqClauses.nevers.length > 0
-        ? doUntil(makeRequest, reqClauses.nevers, 10, reqClauses.timeout, true)
-        : makeRequest()
-    )
+      // Handle making a single request, or looping
+      // for until or never.
+      var makeRequest = _.partial(
+        doRequest, actor.jar, req, reqConfig(reqClauses.config)
+      );
+      return (
+        reqClauses.untils.length > 0
+        ? doUntil(makeRequest, reqClauses.untils, 10, reqClauses.timeout)
+        : reqClauses.nevers.length > 0
+          ? doUntil(makeRequest, reqClauses.nevers, 10, reqClauses.timeout, true)
+          : makeRequest()
+      )
 
-    // Handle .log()
-    .then(function(result) {
-      if (reqClauses.log) {
-        logMessage(
-          util.inspect(_.omit(result, 'response'), true, null, true)
-        );
-      }
-      return result;
-    }, function(err) {
-      if (reqClauses.log) {
-        logMessage(
-          util.inspect(_.omit(err.actual, 'response'), true, null, true)
-        );
-      }
-      throw err;
-    })
-
-    // Handle expectations
-    .then( function(result) {
-      var expectations = reqClauses.expectations.length > 0
-        ? reqClauses.expectations
-        : defaultExpectation
-          ? [defaultExpectation]
-          : [];
-      return applyExpectations(result, expectations)
+      // Handle .log()
       .then(function(result) {
-        scribeRequest(
-          actor.alias,
-          req,
-          result.response,
-          result.json || result.text
-        );
-        that._expectationsPassed
-          += reqClauses.untils.length
-          + reqClauses.nevers.length
-          + reqClauses.expectations.length;
-        return result;
-      });
-    });
+        if (reqClauses.log) {
+          logMessage(
+            util.inspect(_.omit(result, 'response'), true, null, true)
+          );
+        }
+        var expectations = reqClauses.expectations.length > 0
+          ? reqClauses.expectations
+          : defaultExpectation
+            ? [defaultExpectation]
+            : [];
+        return applyExpectations(result, expectations)
+        .then(function(result) {
+          scribeRequest(
+            actor.alias,
+            req,
+            result.response,
+            result.json || result.text
+          );
+          that._expectationsPassed
+            += reqClauses.untils.length
+            + reqClauses.nevers.length
+            + reqClauses.expectations.length;
 
+          _.each(reqClauses.stashResolvers, function(resolver) {
+            resolver(result);
+          });
+
+          return result;
+        });
+      }, function(err) {
+        if (reqClauses.log) {
+          logMessage(
+            util.inspect(_.omit(err.actual, 'response'), true, null, true)
+          );
+        }
+        throw err;
+      });
+
+    });
   });
 
 };
-
-Driver.prototype._resetPromises = function() {
-  this._promises = [];
-};
-
-// A quick way to assert that the request didn't end in error.  Usefult for checking
-// calls that are needed for your test flow but not actually the focus of your test.
-Driver.prototype._defaultExpectation = function(fn) {
-  this.expect(fn);
-  this._lastPromise()._isDefaultExpecation = true;
-  return this;
-};
-
-
-// Get the last promise.  Often grabbed to add on steps like expectations or stashing.
-Driver.prototype._lastPromise = function() {
-  return this._promises[ this._promises.length - 1 ];
-};
-
 
 Driver.prototype._consumeResults = function() {
   var results = {
