@@ -329,6 +329,11 @@ Driver.prototype._request = function(req) {
     timeout: 10000,
     stashResolvers: [],
   };
+
+  // We don't want a stash with names from
+  // the future.
+  var stash = that._stash.clone();
+
   defaultExpectation = null;
   if (that._config.defaultExpectation) {
     var defaultExpectation = {
@@ -341,8 +346,8 @@ Driver.prototype._request = function(req) {
   this.wait(that._config._delay);
   that._dispatcher.addTask(function() {
     return Promise.all([
-      that._stash.substituteRoute(req.path || ""),
-      that._stash.substitute(_.omit(req, "path")),
+      stash.substituteRoute(req.path || ""),
+      stash.substitute(_.omit(req, "path")),
       resolveRequestClauses(reqClauses)
     ])
     .spread(function(path, reqOpts, reqClauses) {
