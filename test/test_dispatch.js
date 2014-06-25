@@ -2,9 +2,10 @@
 /*global suite: false, test: false, setup: false*/
 
 var dispatch = require('../lib/dispatch'),
+  serial = dispatch.serial, parallel = dispatch.parallel,
   chai = require('chai'),
   expect = chai.expect,
-  Promise = require('q');
+  Promise = require('bluebird');
 
 function reflectTask(val) {
   return function() {
@@ -27,85 +28,81 @@ function delayTask(millis, task) {
 
 suite("Dispatch", function() {
 
-  var dispatcher;
-  setup(function() {
-    dispatcher = new dispatch.dispatcher();
-  });
-
   test("Run no tasks", function() {
-    return dispatcher.dispatch()
+    return serial()
+    .dispatch()
     .then(function(results) {
       expect(results).to.eql([]);
     });
   });
 
   test("Run a task", function() {
-    dispatcher.addTask( reflectTask("dummy") );
-    return dispatcher.dispatch()
+    return serial()
+    .addTask( reflectTask("dummy") )
+    .dispatch()
     .spread(function(result) {
       expect(result).to.equal("dummy");
     });
   });
 
   test("Run 2 sequential tasks", function() {
-    dispatcher
+    return serial()
       .addTask( reflectTask(1) )
-      .addTask( reflectTask(2) );
-    return dispatcher.dispatch()
-    .then(function(results) {
-      expect(results).to.eql([1, 2]);
-    });
+      .addTask( reflectTask(2) )
+      .dispatch()
+      .then(function(results) {
+        expect(results).to.eql([1, 2]);
+      });
   });
 
   test("Run 2 asyncronous, sequential tasks", function() {
-    dispatcher
+    return serial()
       .addTask( delayTask(5, reflectTask(1)) )
-      .addTask( reflectTask(2) );
-    return dispatcher.dispatch()
-    .then(function(results) {
-      expect(results).to.eql([1, 2]);
-    });
+      .addTask( reflectTask(2) )
+      .dispatch()
+      .then(function(results) {
+        expect(results).to.eql([1, 2]);
+      });
   });
 
   test("Run 2 tasks concurently", function() {
-    dispatcher
-      .concurrent()
+    return parallel()
       .addTask( delayTask(5, timeTask()) )
-      .addTask( timeTask() );
-    return dispatcher.dispatch()
-    .then(function(results) {
-      expect(results[1]).to.be.lessThan(results[0]);
-    });
+      .addTask( timeTask() )
+      .dispatch()
+      .then(function(results) {
+        expect(results[1]).to.be.lessThan(results[0]);
+      });
   });
 
   test("Run a task, wait, run another", function() {
-    dispatcher
+    return serial()
       .addTask( timeTask() )
       .wait(5)
-      .addTask( timeTask() );
-    return dispatcher.dispatch()
-    .then(function(results) {
-      expect(results[0]).to.be.lessThan(results[1] - 4);
-    });
+      .addTask( timeTask() )
+      .dispatch()
+      .then(function(results) {
+        expect(results[0]).to.be.lessThan(results[1] - 4);
+      });
   });
 
-  test("Run sequence and concurent tasks", function() {
-    dispatcher
+  test("Run sequence and concurrent tasks", function() {
+    return serial()
       .addTask(timeTask())
-      .concurrent()
-      .addTask( delayTask(10, timeTask()) )
-      .addTask( delayTask(5, timeTask()) )
-      .serial()
-      .addTask( timeTask() );
-
-
-    return dispatcher.dispatch()
-    .then(function(results) {
-      var start = results[0];
-      expect(results[1]).to.be.lessThan(start + 12);
-      expect(results[2]).to.be.lessThan(start + 7);
-      expect(results[3]).to.be.lessThan(start + 12);
-    });
+      .addDispatcher(
+        parallel()
+          .addTask( delayTask(10, timeTask()) )
+          .addTask( delayTask(5, timeTask()) )
+      )
+      .addTask( timeTask() )
+      .dispatch()
+      .then(function(results) {
+        var start = results[0];
+        expect(results[1]).to.be.greaterThan(start + 9);
+        expect(results[2]).to.be.greaterThan(start + 4);
+        expect(results[3]).to.be.greaterThan(start + 9);
+        expect(results[3]).to.be.lessThan(start + 15);
+      });
   });
 
 });
