@@ -310,31 +310,6 @@ Driver.prototype.results = function(fn) {
 
 };
 
-//Deprecated
-Driver.prototype.on = function(emitter, evt, fn, stashKey) {
-  var that = this;
-  that._stash.set(stashKey, new Promise(function(resolver) {
-    that._dispatcher.addTask(function() {
-      return Promise.promisify(function(callback) {
-        emitter.once(evt, function() {
-          try {
-            var ret = fn ? fn.apply(emitter, arguments) : undefined;
-            return callback(null, ret);
-          }
-          catch (e) {
-            return callback(e);
-          }
-        });
-      })()
-      .then(resolver);
-    });
-
-  }));
-
-  return this;
-};
-
-
 //
 // Private Helpers
 //
