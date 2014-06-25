@@ -2,7 +2,7 @@
 /*global suite: false, test: false, setup: false*/
 
 var dispatch = require('../lib/dispatch'),
-  serial = dispatch.serial, parallel = dispatch.parallel,
+  sequential = dispatch.sequential, concurrent = dispatch.concurrent,
   chai = require('chai'),
   expect = chai.expect,
   Promise = require('bluebird');
@@ -29,7 +29,7 @@ function delayTask(millis, task) {
 suite("Dispatch", function() {
 
   test("Run no tasks", function() {
-    return serial()
+    return sequential()
     .dispatch()
     .then(function(results) {
       expect(results).to.eql([]);
@@ -37,7 +37,7 @@ suite("Dispatch", function() {
   });
 
   test("Run a task", function() {
-    return serial()
+    return sequential()
     .addTask( reflectTask("dummy") )
     .dispatch()
     .spread(function(result) {
@@ -46,7 +46,7 @@ suite("Dispatch", function() {
   });
 
   test("Run 2 sequential tasks", function() {
-    return serial()
+    return sequential()
       .addTask( reflectTask(1) )
       .addTask( reflectTask(2) )
       .dispatch()
@@ -56,7 +56,7 @@ suite("Dispatch", function() {
   });
 
   test("Run 2 asyncronous, sequential tasks", function() {
-    return serial()
+    return sequential()
       .addTask( delayTask(5, reflectTask(1)) )
       .addTask( reflectTask(2) )
       .dispatch()
@@ -66,7 +66,7 @@ suite("Dispatch", function() {
   });
 
   test("Run 2 tasks concurently", function() {
-    return parallel()
+    return concurrent()
       .addTask( delayTask(5, timeTask()) )
       .addTask( timeTask() )
       .dispatch()
@@ -76,7 +76,7 @@ suite("Dispatch", function() {
   });
 
   test("Run a task, wait, run another", function() {
-    return serial()
+    return sequential()
       .addTask( timeTask() )
       .wait(5)
       .addTask( timeTask() )
@@ -87,10 +87,10 @@ suite("Dispatch", function() {
   });
 
   test("Run sequence and concurrent tasks", function() {
-    return serial()
+    return sequential()
       .addTask(timeTask())
       .addDispatcher(
-        parallel()
+        concurrent()
           .addTask( delayTask(10, timeTask()) )
           .addTask( delayTask(5, timeTask()) )
       )

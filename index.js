@@ -10,8 +10,8 @@ var Promise = require("bluebird"),
     stash = require('./lib/stash'),
     url = require("url"),
     zlib = require("zlib"),
-    serial = require("./lib/dispatch").serial,
-    parallel = require("./lib/dispatch").parallel;
+    sequential = require("./lib/dispatch").sequential,
+    concurrent = require("./lib/dispatch").concurrent;
 
 var Actor = function(alias) {
   this.alias = alias;
@@ -19,7 +19,7 @@ var Actor = function(alias) {
 };
 
 var Driver = function() {
-  this._dispatcher = serial();
+  this._dispatcher = sequential();
 
   this.actors = [];
   this._active = null;  //the current actor
@@ -237,8 +237,8 @@ Driver.prototype.concurrent = function(fn) {
   this.wait(this._config.delay);
 
   var formerDispatcher = this._dispatcher;
-  this._dispatcher = parallel();
-  formerDispatcher.add(this._dispatcher);
+  this._dispatcher = concurrent();
+  formerDispatcher.addDispatcher(this._dispatcher);
   fn();
   this._dispatcher = formerDispatcher;
   return this;
@@ -293,10 +293,7 @@ Driver.prototype.results = function(fn) {
 
   // Wait for everything to finish, then consume
   // the results and reset the state of the promises
-  Promise.join(
-    this._dispatcher.dispatch(),
-    that._stash.resolve()
-  )
+  this._dispatcher.dispatch()
   .then(function () {
     fn(null, that._consumeResults());
   }, function(err) {
