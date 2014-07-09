@@ -7,7 +7,7 @@ var chai = require('chai'),
   driver = require('../driver2'),
   ContextError = driver.ContextError,
   ExpectationError = driver.ExpectationError,
-  low = driver.flow, step = driver.step, as = driver.as, req = driver.req,
+  flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
   sequence = driver.sequence, eventually = driver.eventually, introduce = driver.introduce;
 
 
@@ -135,6 +135,30 @@ suite('Requests', function() {
       .then(function(ctx) {
         expect(ctx.expectationsPassed).to.eql(1);
       });
+  });
+
+  test('stash', function() {
+    return sequence(
+      req
+        .POST('/reflect', {foo: 'bar'})
+        .stash('result'),
+      req
+        .POST('/reflect', {nested: ':result'})
+        .expect({ nested: { foo: 'bar'} })
+    )(new driver.Context());
+  });
+
+  test('stash with scraping function', function() {
+    return sequence(
+      req
+        .POST('/reflect', {foo: 'bar'})
+        .stash('result', function(body) {
+          return body.foo;
+        }),
+      req
+        .POST('/reflect', {nested: ':result'})
+        .expect({ nested: 'bar' })
+    )(new driver.Context());
   });
 
 });
