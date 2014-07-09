@@ -36,14 +36,37 @@ suite('Actors', function() {
 
   test('as', function() {
     return sequence(
-      introduce('mia'),
-      introduce('ella'),
-      as('mia')
+      introduce('mia', 'ella'),
+      function(ctx) {
+        expect(ctx.currentActor()).to.eql('ella');
+        return ctx;
+      },
+      as('mia'),
+      function(ctx) {
+        expect(ctx.currentActor()).to.eql('mia');
+      }
+    )(new driver.Context());
+  });
+
+  test('as, nested', function() {
+    return sequence(
+      introduce('ella', 'mia'),
+      as('ella',
+        function(ctx) {
+          expect(ctx.currentActor()).to.eql('ella');
+          return ctx;
+        }
+      ),
+      function(ctx) {
+        expect(ctx.currentActor()).to.eql('mia');
+        return ctx;
+      }
     )(new driver.Context())
     .then(function(ctx) {
       expect(ctx.currentActor()).to.eql('mia');
     });
   });
+
 });
 
 suite('Requests', function() {

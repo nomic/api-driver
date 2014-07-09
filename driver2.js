@@ -12,15 +12,31 @@ module.exports = _.extend({
   require('./lib/req')
 );
 
-function introduce(alias) {
+function introduce(/* aliases* */) {
+  var aliases = _.toArray(arguments);
   return function(ctx) {
-    ctx.addActor(alias, request.jar());
-    ctx.setCurrentActor(alias);
+    _.each(aliases, function(alias) {
+      ctx.addActor(alias, request.jar());
+    });
+    ctx.setCurrentActor(aliases.slice(-1)[0]);
     return ctx;
   };
 }
 
-function as(alias) {
+function as(alias /*, cmds* */) {
+  var cmds = _.toArray(arguments).slice(1);
+  if (cmds.length) {
+    return function(ctx) {
+      var prevActor = ctx.currentActor();
+      ctx.setCurrentActor(alias);
+      return _sequence(ctx, cmds)
+      .then(function(ctx) {
+        ctx.setCurrentActor(prevActor);
+        return ctx;
+      });
+    };
+  }
+
   return function(ctx) {
     ctx.setCurrentActor(alias);
     return ctx;
@@ -30,15 +46,15 @@ function as(alias) {
 function sequence() {
   var cmds = _.toArray(arguments);
   return function(ctx) {
-    return _sequence(cmds, ctx);
+    return _sequence(ctx, cmds);
   };
 }
 
-function _sequence(cmds, ctx) {
+function _sequence(ctx, cmds) {
   return cmds.length
     ? Promise.resolve(cmds.slice(0,1)[0](ctx))
       .then(function(ctx) {
-        return _sequence(cmds.slice(1), ctx);
+        return _sequence(ctx, cmds.slice(1));
       })
     : Promise.resolve(ctx);
 }
