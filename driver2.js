@@ -6,7 +6,8 @@ var _ = require('lodash'),
 module.exports = _.extend({
   introduce: introduce,
   as: as,
-  sequence: sequence
+  sequence: sequence,
+  concurrence: concurrence
 },
   require('./lib/context'),
   require('./lib/req')
@@ -47,6 +48,15 @@ function sequence() {
   var cmds = _.toArray(arguments);
   return function(ctx) {
     return _sequence(ctx, cmds);
+  };
+}
+
+function concurrence() {
+  var cmds = _.toArray(arguments);
+  return function(ctx) {
+    return Promise.map(cmds, function(cmd) {
+      return cmd(ctx);
+    });
   };
 }
 

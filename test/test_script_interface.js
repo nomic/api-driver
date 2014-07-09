@@ -8,7 +8,8 @@ var chai = require('chai'),
   ContextError = driver.ContextError,
   ExpectationError = driver.ExpectationError,
   flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
-  sequence = driver.sequence, eventually = driver.eventually, introduce = driver.introduce;
+  sequence = driver.sequence, concurrence = driver.concurrence,
+  eventually = driver.eventually, introduce = driver.introduce;
 
 
 suite('Actors', function() {
@@ -191,11 +192,24 @@ suite('Control Flow', function() {
 
     return sequence(
       function(ctx) {ctx.counter = 1; return ctx;},
-      function(ctx) {ctx.counter++; return ctx;}
-    )(new driver.Context())
-    .then(function(ctx) {
-      expect(ctx.counter).to.equal(2);
-    });
+      function(ctx) {ctx.counter++; return ctx;},
+      function(ctx) {expect(ctx.counter).to.equal(2); }
+    )(new driver.Context());
+  });
+
+  test('concurrence', function() {
+
+    return concurrence(
+      function(ctx) {
+        return Promise.delay(100)
+        .then(function() { ctx.val = 'delayed'; return ctx; });
+      },
+      function(ctx) {ctx.val = 'immediate'; return ctx;},
+      function(ctx) {
+        return Promise.delay(50)
+        .then(function() { expect(ctx.val).to.equal('immediate'); });
+      }
+    )(new driver.Context());
   });
 
 });
