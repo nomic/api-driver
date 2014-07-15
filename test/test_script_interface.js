@@ -116,9 +116,17 @@ suite('Requests', function() {
       .catch(ExpectationError, function(err) {
         return err;
       });
-      // .then( function(caughtError) {
-      //   expect(caughtError).to.be.instanceOf(ExpectationError);
-      // });
+  });
+
+  test('failing first expectation', function() {
+    return req
+      .GET('/status/204')
+      .expect(200)
+      .expect(204)
+      (new driver.Context())
+      .catch(ExpectationError, function(err) {
+        return err;
+      });
   });
 
   test('expectation on body', function() {

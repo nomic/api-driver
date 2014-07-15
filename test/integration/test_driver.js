@@ -15,7 +15,7 @@ suite("Driver Basics", function() {
       "Content-Type": "application/json"
     });
 
-  test("Check a 200", function() {
+  test("Check for 200 and body", function() {
     return (
       sequence(
         introduce('ella'),
