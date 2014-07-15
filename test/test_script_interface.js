@@ -4,7 +4,7 @@ var chai = require('chai'),
   expect = chai.expect,
   assert = chai.assert,
   Promise = require('bluebird'),
-  driver = require('../driver2'),
+  driver = require('../index'),
   ContextError = driver.ContextError,
   ExpectationError = driver.ExpectationError,
   flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
@@ -221,6 +221,28 @@ suite('Control Flow', function() {
     )(new driver.Context());
   });
 
+  test('sequence with array', function() {
+
+    return sequence([
+      function(ctx) {ctx.counter = 1; return ctx;},
+      function(ctx) {ctx.counter++; return ctx;},
+      function(ctx) {expect(ctx.counter).to.equal(2); }
+    ])(new driver.Context());
+  });
+
+  test('steps', function() {
+
+    return flow('A flow',
+      step('Do something',
+        sequence(
+          function(ctx) {ctx.counter = 1; return ctx;},
+          function(ctx) {ctx.counter++; return ctx;},
+          function(ctx) {expect(ctx.counter).to.equal(2); }
+        )
+      )
+    )(new driver.Context());
+  });
+
   test('concurrence', function() {
 
     return concurrence(
@@ -234,6 +256,14 @@ suite('Control Flow', function() {
         .then(function() { expect(ctx.val).to.equal('immediate'); });
       }
     )(new driver.Context());
+  });
+
+  test('concurrence with array', function() {
+
+    return concurrence([
+      function(ctx) { return ctx; },
+      function(ctx) { return ctx; }
+    ])(new driver.Context());
   });
 
 });

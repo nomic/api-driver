@@ -1,7 +1,7 @@
 "use strict";
 /*global suite: false, test: false, setup: false*/
 
-var driver = require("../../driver2"),
+var driver = require("../../index"),
   flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
   sequence = driver.sequence, concurrence = driver.concurrence,
   eventually = driver.eventually, introduce = driver.introduce,
