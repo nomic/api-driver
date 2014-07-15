@@ -74,19 +74,25 @@ suite('Requests', function() {
   req = req.handler(mockRequest);
 
   function mockRequest(opts) {
-    var uriParts = opts.relativeUri.split('/');
+    var urlParts = opts.relativeUrl.split('/');
     var body = opts.body;
     return Promise.try(function() {
-      if ('status' === uriParts[1]) {
-        var statusCode = uriParts[2];
+      if ('status' === urlParts[1]) {
+        var statusCode = urlParts[2];
         return {
           statusCode: parseInt(statusCode, 10)
         };
       }
-      if ('reflect' === uriParts[1]) {
+      if ('reflect' === urlParts[1]) {
         return {
           statusCode: 200,
           body: body
+        };
+      }
+      if ('reflectUrl' === urlParts[1]) {
+        return {
+          statusCode: 200,
+          body: {url: opts.url}
         };
       }
     });

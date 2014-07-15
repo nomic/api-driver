@@ -95,7 +95,6 @@ Driver.prototype.req = function(req) {
 
 Driver.prototype.request = Driver.prototype.req;
 
-
 //
 // Expectation commands
 //
