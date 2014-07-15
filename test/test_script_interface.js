@@ -92,7 +92,7 @@ suite('Requests', function() {
       if ('reflectUrl' === urlParts[1]) {
         return {
           statusCode: 200,
-          body: {url: opts.url}
+          body: {url: (opts.rootUrl || "") + opts.relativeUrl}
         };
       }
     });
@@ -180,9 +180,19 @@ suite('Requests', function() {
       req
         .POST('/reflect', {foo: 'bar'})
         .stash('result'),
-      req
-        .POST('/reflect', {nested: ':result'})
-        .expect({ nested: { foo: 'bar'} })
+
+      concurrence(
+        req
+          .POST('/reflect', {nested: ':result'})
+          .expect({ nested: { foo: 'bar'} }),
+        req
+          .POST('/reflect', {nested: ':result'})
+          .expect({nested: ':result'}),
+        req
+          .POST('/reflectUrl/:result.foo')
+          .expect({ url: '/reflectUrl/bar' })
+      )
+
     )(new driver.Context());
   });
 
