@@ -244,16 +244,19 @@ suite('Control Flow', function() {
   });
 
   test('concurrence', function() {
-
+    var val = null;
     return concurrence(
       function(ctx) {
         return Promise.delay(100)
-        .then(function() { ctx.val = 'delayed'; return ctx; });
+        .then(function() { val = 'delayed'; return ctx; });
       },
-      function(ctx) {ctx.val = 'immediate'; return ctx;},
+      function(ctx) {val = 'immediate'; return ctx;},
       function(ctx) {
         return Promise.delay(50)
-        .then(function() { expect(ctx.val).to.equal('immediate'); });
+        .then(function() {
+          expect(val).to.equal('immediate');
+          return ctx;
+        });
       }
     )(new driver.Context());
   });

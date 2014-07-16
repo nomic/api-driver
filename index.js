@@ -2,16 +2,18 @@
 var _ = require('lodash'),
     request = require('request'),
     Promise = require('bluebird'),
-    assert = require('assert');
+    assert = require('assert'),
+    context = require('./lib/context');
 
 module.exports = _.extend({
   introduce: introduce,
   as: as,
   sequence: sequence,
   concurrence: concurrence,
-  step: step
+  step: step,
+  stash: stash
 },
-  require('./lib/context'),
+  context,
   require('./lib/req')
 );
 
@@ -31,7 +33,7 @@ function as(alias /*, cmds* */) {
   if (cmds.length) {
     return function(ctx) {
       var prevActor = ctx.currentActor();
-      ctx.setCurrentActor(alias);
+      ctx.setCurrentActor(alias, request.jar);
       return _sequence(ctx, cmds)
       .then(function(ctx) {
         ctx.setCurrentActor(prevActor);
@@ -57,15 +59,16 @@ function concurrence() {
   var cmds = _.flatten(_.toArray(arguments));
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
-      return cmd(ctx);
-    });
+      return cmd(ctx.cloneDeep());
+    })
+    .then(context.Context.merge);
   };
 }
 
 function _sequence(ctx, cmds) {
   cmds = _.flatten(cmds);
   return cmds.length
-    ? Promise.try(cmds.slice(0,1)[0], ctx)
+    ? Promise.try(cmds.slice(0,1)[0], ctx.cloneDeep())
       .then(function(ctx) {
         return _sequence(ctx, cmds.slice(1));
       })
@@ -77,5 +80,12 @@ function step(title /*, cmds* */) {
   var cmds = _.toArray(_.rest(arguments));
   return function(ctx) {
     return _sequence(ctx, cmds);
+  };
+}
+
+function stash(key, val) {
+  return function(ctx) {
+    ctx.stash(key, val);
+    return ctx;
   };
 }
