@@ -7,7 +7,7 @@ var chai = require('chai'),
   driver = require('../index'),
   ContextError = driver.ContextError,
   ExpectationError = driver.ExpectationError,
-  flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
+  step = driver.step, as = driver.as, req = driver.req,
   sequence = driver.sequence, concurrence = driver.concurrence,
   eventually = driver.eventually, introduce = driver.introduce;
 
@@ -232,14 +232,14 @@ suite('Control Flow', function() {
 
   test('steps', function() {
 
-    return flow('A flow',
+    return sequence(
       step('Do something',
+          function(ctx) {ctx.counter = 1; return ctx;}
+      ),
+      step('Then do this',
         sequence(
-          function(ctx) {ctx.counter = 1; return ctx;},
           function(ctx) {ctx.counter++; return ctx;},
-          function(ctx) {expect(ctx.counter).to.equal(2); }
-        )
-      )
+          function(ctx) {expect(ctx.counter).to.equal(2); }))
     )(new driver.Context());
   });
 

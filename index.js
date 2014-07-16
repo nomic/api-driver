@@ -9,7 +9,6 @@ module.exports = _.extend({
   as: as,
   sequence: sequence,
   concurrence: concurrence,
-  flow: flow,
   step: step
 },
   require('./lib/context'),
@@ -66,19 +65,11 @@ function concurrence() {
 function _sequence(ctx, cmds) {
   cmds = _.flatten(cmds);
   return cmds.length
-    ? Promise.resolve(cmds.slice(0,1)[0](ctx))
+    ? Promise.try(cmds.slice(0,1)[0], ctx)
       .then(function(ctx) {
         return _sequence(ctx, cmds.slice(1));
       })
     : Promise.resolve(ctx);
-}
-
-function flow(title /*, cmds* */) {
-  assert(title);
-  var cmds = _.toArray(_.rest(arguments));
-  return function(ctx) {
-    return _sequence(ctx, cmds);
-  };
 }
 
 function step(title /*, cmds* */) {
