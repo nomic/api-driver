@@ -102,10 +102,7 @@ suite('Requests', function() {
     return req
       .GET('/status/204')
       .expect(204)
-      (new driver.Context())
-      .then(function(ctx) {
-        expect(ctx.expectationsPassed).to.eql(1);
-      });
+      (new driver.Context());
   });
 
   test('failing expectation', function() {
@@ -133,20 +130,14 @@ suite('Requests', function() {
     return req
       .POST('/reflect', {foo: 'bar'})
       .expect({foo: 'bar'})
-      (new driver.Context())
-      .then(function(ctx) {
-        expect(ctx.expectationsPassed).to.eql(1);
-      });
+      (new driver.Context());
   });
 
   test('expectation on status and body', function() {
     return req
       .POST('/reflect', {foo: 'bar'})
       .expect(200, {foo: 'bar'})
-      (new driver.Context())
-      .then(function(ctx) {
-        expect(ctx.expectationsPassed).to.eql(1);
-      });
+      (new driver.Context());
   });
 
   test('expectation on fn', function() {
@@ -156,10 +147,7 @@ suite('Requests', function() {
         expect(res.statusCode).to.equal(200);
         expect(res.body).to.eql({foo: 'bar'});
       })
-      (new driver.Context())
-      .then(function(ctx) {
-        expect(ctx.expectationsPassed).to.eql(1);
-      });
+      (new driver.Context());
   });
 
   test('expectation on status and fn', function() {
@@ -169,10 +157,7 @@ suite('Requests', function() {
         expect(res.statusCode).to.equal(200);
         expect(res.body).to.eql({foo: 'bar'});
       })
-      (new driver.Context())
-      .then(function(ctx) {
-        expect(ctx.expectationsPassed).to.eql(1);
-      });
+      (new driver.Context());
   });
 
   test('stash', function() {

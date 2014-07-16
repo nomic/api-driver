@@ -59,7 +59,7 @@ function concurrence() {
   var cmds = _.flatten(_.toArray(arguments));
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
-      return cmd(ctx.cloneDeep());
+      return cmd(ctx.clone());
     })
     .then(context.Context.merge);
   };
@@ -68,7 +68,7 @@ function concurrence() {
 function _sequence(ctx, cmds) {
   cmds = _.flatten(cmds);
   return cmds.length
-    ? Promise.try(cmds.slice(0,1)[0], ctx.cloneDeep())
+    ? Promise.try(cmds.slice(0,1)[0], ctx.clone())
       .then(function(ctx) {
         return _sequence(ctx, cmds.slice(1));
       })
