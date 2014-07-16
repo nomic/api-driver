@@ -61,14 +61,18 @@ function concurrence() {
     return Promise.map(cmds, function(cmd) {
       return cmd(ctx.clone());
     })
-    .then(context.Context.merge);
+    .then(function(ctxs) {
+      var newCtx = context.Context.merge(ctxs);
+      newCtx.setCurrentActor(ctx.currentActor());
+      return newCtx;
+    });
   };
 }
 
 function _sequence(ctx, cmds) {
   cmds = _.flatten(cmds);
   return cmds.length
-    ? Promise.try(cmds.slice(0,1)[0], ctx.clone())
+    ? Promise.try(cmds.slice(0,1)[0], ctx)
       .then(function(ctx) {
         return _sequence(ctx, cmds.slice(1));
       })
