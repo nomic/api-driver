@@ -10,7 +10,8 @@ module.exports = _.extend({
   sequence: sequence,
   concurrence: concurrence,
   step: step,
-  stash: stash
+  stash: stash,
+  eventually: eventually
 },
   context,
   require('./lib/req')
@@ -108,4 +109,30 @@ function _validate(condition, msg) {
     Error.captureStackTrace(err, _validate);
     throw err;
   }
+}
+
+function eventually(fn, opts) {
+  opts =_.defaults(opts || {}, {
+    delay: 2,
+    timeout: Infinity,
+    report: _.noop
+  });
+  return function() {
+    var args = arguments;
+    var boundFn = function() {
+      return fn.apply(null, args);
+    };
+    return _untilResolved(boundFn, opts.delay, opts.timeout, opts.report, 0);
+  };
+}
+
+function _untilResolved(fn, delay, timeout, report, elapsed) {
+  return Promise.try(fn)
+  .then(null, function(err) {
+    if (elapsed > timeout) throw err;
+    report('Retrying in ' + delay + ' ms');
+    return Promise.delay(delay).then(function() {
+      return _untilResolved(fn, delay * 2, timeout, report, delay + elapsed);
+    });
+  });
 }

@@ -254,6 +254,19 @@ suite('Control Flow', function() {
     ])(new driver.Context());
   });
 
+  test('eventually', function() {
+
+    var tries = 0;
+    return eventually(
+      function(ctx) {
+        if (tries++ < 3) {
+          throw new Error();
+        }
+        return ctx;
+      }
+    )(new driver.Context());
+  });
+
 });
 
 
