@@ -2,7 +2,6 @@
 var _ = require('lodash'),
     request = require('request'),
     Promise = require('bluebird'),
-    assert = require('assert'),
     context = require('./lib/context');
 
 module.exports = _.extend({
@@ -57,6 +56,7 @@ function sequence() {
 
 function concurrence() {
   var cmds = _.flatten(_.toArray(arguments));
+  _validate(_.all(cmds, _.isFunction), 'Commands must be functions: ' + cmds);
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
       return cmd(ctx.clone());
@@ -71,6 +71,14 @@ function concurrence() {
 
 function _sequence(ctx, cmds) {
   cmds = _.flatten(cmds);
+  _validate(
+    _.all(cmds, _.isFunction),
+    'Commands must be functions: [' + cmds + ']'
+  );
+  return _sequenceHelper(ctx, cmds);
+}
+
+function _sequenceHelper(ctx, cmds) {
   return cmds.length
     ? Promise.try(cmds.slice(0,1)[0], ctx)
       .then(function(ctx) {
@@ -80,7 +88,7 @@ function _sequence(ctx, cmds) {
 }
 
 function step(title /*, cmds* */) {
-  assert(title);
+  _validate(title, 'Invalid title: ' + title);
   var cmds = _.toArray(_.rest(arguments));
   return function(ctx) {
     return _sequence(ctx, cmds);
@@ -92,4 +100,12 @@ function stash(key, val) {
     ctx.stash(key, val);
     return ctx;
   };
+}
+
+function _validate(condition, msg) {
+  if (! condition) {
+    var err = new TypeError(msg);
+    Error.captureStackTrace(err, _validate);
+    throw err;
+  }
 }
