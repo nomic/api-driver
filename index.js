@@ -114,7 +114,7 @@ function _validate(condition, msg) {
 function eventually(fn, opts) {
   opts =_.defaults(opts || {}, {
     delay: 2,
-    timeout: Infinity,
+    timeout: 5000,
     report: _.noop
   });
   return function() {
