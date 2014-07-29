@@ -1,5 +1,6 @@
 'use strict';
 /*global suite: false, test: false, setup: false*/
+/*jshint expr: true*/
 var chai = require('chai'),
   expect = chai.expect,
   assert = chai.assert,
@@ -9,7 +10,8 @@ var chai = require('chai'),
   ExpectationError = driver.ExpectationError,
   step = driver.step, as = driver.as, req = driver.req,
   sequence = driver.sequence, concurrence = driver.concurrence,
-  eventually = driver.eventually, introduce = driver.introduce;
+  eventually = driver.eventually, introduce = driver.introduce,
+  wait = driver.wait;
 
 
 suite('Actors', function() {
@@ -232,12 +234,12 @@ suite('Control Flow', function() {
     var val = null;
     return concurrence(
       function(ctx) {
-        return Promise.delay(100)
+        return Promise.delay(20)
         .then(function() { val = 'delayed'; return ctx; });
       },
       function(ctx) {val = 'immediate'; return ctx;},
       function(ctx) {
-        return Promise.delay(50)
+        return Promise.delay(10)
         .then(function() {
           expect(val).to.equal('immediate');
           return ctx;
@@ -267,8 +269,46 @@ suite('Control Flow', function() {
     )(new driver.Context());
   });
 
+  test('wait', function() {
+
+    var tries = 0;
+    var start = Date.now();
+    return sequence(
+      wait(10),
+      function() {
+        expect(Date.now() - start).is.gte(10);
+      }
+    )(new driver.Context());
+  });
+
 });
 
+
+suite("Run", function() {
+
+  test('Without context', function() {
+    return driver.run(function(ctx) {
+      expect(ctx.currentActor).to.exist;
+    });
+  });
+
+  test('With context', function() {
+    var ctx = new driver.Context();
+    ctx.state = true;
+    return driver.run(ctx, function(ctx) {
+      expect(ctx.state).to.exist;
+    });
+  });
+
+  test('With promise for context', function() {
+    var ctx = new driver.Context();
+    ctx.state = true;
+    return driver.run(Promise.resolve(ctx), function(ctx) {
+      expect(ctx.state).to.exist;
+    });
+  });
+
+});
 
 function assertIsACookieJar(obj) {
   expect(obj.getCookieString).is.a('function');

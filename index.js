@@ -5,17 +5,34 @@ var _ = require('lodash'),
     context = require('./lib/context');
 
 module.exports = _.extend({
+  run: run,
   introduce: introduce,
   as: as,
   sequence: sequence,
   concurrence: concurrence,
   step: step,
   stash: stash,
-  eventually: eventually
+  eventually: eventually,
+  wait: wait
 },
   context,
   require('./lib/req')
 );
+
+function run(/*[context], fn*/) {
+  _assert(
+    arguments.length <= 2,
+    'run requires 1 or 2 arguments, but called with:' + _.toArray(arguments)
+  );
+
+  if (arguments.length === 1) {
+    return arguments[0](new context.Context());
+  }
+
+  var ctx = arguments[0];
+  var fn = arguments[1];
+  return Promise.cast(ctx).then(fn);
+}
 
 function introduce(/* aliases* */) {
   var aliases = _.toArray(arguments);
@@ -126,6 +143,15 @@ function eventually(fn, opts) {
   };
 }
 
+function wait(millis) {
+  return function(ctx) {
+    return Promise.delay(millis)
+      .then(function() {
+        return ctx;
+      });
+  };
+}
+
 function _untilResolved(fn, delay, timeout, report, elapsed) {
   return Promise.try(fn)
   .then(null, function(err) {
@@ -136,3 +162,17 @@ function _untilResolved(fn, delay, timeout, report, elapsed) {
     });
   });
 }
+
+function _assert(truthy, message) {
+  if (! truthy) {
+    throw new DriverError(message);
+  }
+}
+
+function DriverError(message) {
+  this.message = message;
+  this.name = "DrivrError";
+  Error.captureStackTrace(this, DriverError);
+}
+DriverError.prototype = Object.create(Error.prototype);
+DriverError.prototype.constructor = DriverError;
