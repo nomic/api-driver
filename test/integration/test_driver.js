@@ -1,11 +1,8 @@
 "use strict";
-/*global suite: false, test: false, setup: false*/
+/*global suite: false, test: false */
 
 var driver = require("../../index"),
-  flow = driver.flow, step = driver.step, as = driver.as, req = driver.req,
-  sequence = driver.sequence, concurrence = driver.concurrence,
-  eventually = driver.eventually, introduce = driver.introduce,
-  expect = require('chai').expect;
+  as = driver.as, req = driver.req;
 
 suite("Driver Basics", function() {
 
@@ -16,26 +13,22 @@ suite("Driver Basics", function() {
     });
 
   test("Check for 200 and body", function() {
-    return (
-      sequence(
-        introduce('ella'),
+    return driver.run(
+      as('ella',
         req
           .GET('/')
           .expect(200)
           .expect({title: "$exists"})
-          .expect(200, {title: "$exists"})
-      )(new driver.Context())
+          .expect(200, {title: "$exists"}))
     );
   });
 
   test("Check a 404", function() {
-    return (
-      sequence(
-        introduce('ella'),
+    return driver.run(
+      as('ella',
         req
           .GET('/bogus')
-          .expect(404)
-      )(new driver.Context())
+          .expect(404))
     );
   });
 
