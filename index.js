@@ -100,6 +100,7 @@ function step(title /*, cmds* */) {
   _validate(title, 'Invalid title: ' + title);
   var cmds = _conformCommands(_.rest(arguments));
   return function(ctx) {
+    ctx.emit('step', title);
     return _sequence(ctx, cmds);
   };
 }
