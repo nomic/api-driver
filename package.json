@@ -1,6 +1,6 @@
 {
   "name": "api-driver",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "a concise way to string together and test JSON API calls",
   "keywords": [
     "http",
@@ -27,7 +27,8 @@
     "form-data": "0.1.0",
     "json-diff": "0.3.1",
     "request": "2.36.0",
-    "underscore": "1.5.1"
+    "underscore": "1.5.1",
+    "lodash": "2.4.1"
   },
   "devDependencies": {
     "mocha": "1.20.1",
