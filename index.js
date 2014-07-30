@@ -8,30 +8,26 @@ module.exports = _.extend({
   run: run,
   introduce: introduce,
   as: as,
-  sequence: sequence,
-  concurrence: concurrence,
+  sequentially: sequentially,
+  concurrently: concurrently,
   step: step,
   stash: stash,
   eventually: eventually,
-  wait: wait
+  wait: wait,
+  pass: pass
 },
   context,
   require('./lib/req')
 );
 
 function run(/*[context], fn*/) {
-  _assert(
-    arguments.length <= 2,
-    'run requires 1 or 2 arguments, but called with:' + _.toArray(arguments)
-  );
-
-  if (arguments.length === 1) {
-    return arguments[0](new context.Context());
+  if (_.isFunction(arguments[0])) {
+    return sequentially(_.toArray(arguments))(new context.Context());
   }
 
-  var ctx = arguments[0];
-  var fn = arguments[1];
-  return Promise.cast(ctx).then(fn);
+  var ctx = _.first(arguments);
+  var cmds = _.rest(arguments);
+  return Promise.cast(ctx).then(sequentially(cmds));
 }
 
 function introduce(/* aliases* */) {
@@ -46,7 +42,7 @@ function introduce(/* aliases* */) {
 }
 
 function as(alias /*, cmds* */) {
-  var cmds = _.toArray(arguments).slice(1);
+  var cmds = _conformCommands(_.rest(arguments));
   if (cmds.length) {
     return function(ctx) {
       var prevActor = ctx.currentActor();
@@ -65,15 +61,19 @@ function as(alias /*, cmds* */) {
   };
 }
 
-function sequence() {
-  var cmds = _.toArray(arguments);
+function sequentially() {
+  var cmds = _conformCommands(_.toArray(arguments));
   return function(ctx) {
     return _sequence(ctx, cmds);
   };
 }
 
-function concurrence() {
-  var cmds = _.flatten(_.toArray(arguments));
+function pass() {
+  return sequentially();
+}
+
+function concurrently() {
+  var cmds = _conformCommands(_.toArray(arguments));
   _validate(_.all(cmds, _.isFunction), 'Commands must be functions: ' + cmds);
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
@@ -88,15 +88,6 @@ function concurrence() {
 }
 
 function _sequence(ctx, cmds) {
-  cmds = _.flatten(cmds);
-  _validate(
-    _.all(cmds, _.isFunction),
-    'Commands must be functions: [' + cmds + ']'
-  );
-  return _sequenceHelper(ctx, cmds);
-}
-
-function _sequenceHelper(ctx, cmds) {
   return cmds.length
     ? Promise.try(cmds.slice(0,1)[0], ctx)
       .then(function(ctx) {
@@ -107,7 +98,7 @@ function _sequenceHelper(ctx, cmds) {
 
 function step(title /*, cmds* */) {
   _validate(title, 'Invalid title: ' + title);
-  var cmds = _.toArray(_.rest(arguments));
+  var cmds = _conformCommands(_.rest(arguments));
   return function(ctx) {
     return _sequence(ctx, cmds);
   };
@@ -161,6 +152,15 @@ function _untilResolved(fn, delay, timeout, report, elapsed) {
       return _untilResolved(fn, delay * 2, timeout, report, delay + elapsed);
     });
   });
+}
+
+function _conformCommands(cmds) {
+  cmds = _.flatten(cmds);
+  _validate(
+    _.all(cmds, _.isFunction),
+    'Driver commands must be functions: [' + cmds + ']'
+  );
+  return cmds;
 }
 
 function _assert(truthy, message) {

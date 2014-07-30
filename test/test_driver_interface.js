@@ -9,7 +9,7 @@ var chai = require('chai'),
   ContextError = driver.ContextError,
   ExpectationError = driver.ExpectationError,
   step = driver.step, as = driver.as, req = driver.req,
-  sequence = driver.sequence, concurrence = driver.concurrence,
+  sequentially = driver.sequentially, concurrently = driver.concurrently,
   eventually = driver.eventually, introduce = driver.introduce,
   wait = driver.wait;
 
@@ -26,7 +26,7 @@ suite('Actors', function() {
   });
 
   test('multiple introductions', function() {
-    return sequence(
+    return sequentially(
       introduce('mia'),
       introduce('ella')
     )(new driver.Context())
@@ -38,7 +38,7 @@ suite('Actors', function() {
   });
 
   test('as', function() {
-    return sequence(
+    return sequentially(
       introduce('mia', 'ella'),
       function(ctx) {
         expect(ctx.currentActor()).to.eql('ella');
@@ -52,7 +52,7 @@ suite('Actors', function() {
   });
 
   test('as, nested', function() {
-    return sequence(
+    return sequentially(
       introduce('ella', 'mia'),
       as('ella',
         function(ctx) {
@@ -163,12 +163,12 @@ suite('Requests', function() {
   });
 
   test('stash', function() {
-    return sequence(
+    return sequentially(
       req
         .POST('/reflect', {foo: 'bar'})
         .stash('result'),
 
-      concurrence(
+      concurrently(
         req
           .POST('/reflect', {nested: ':result'})
           .expect({ nested: { foo: 'bar'} }),
@@ -184,7 +184,7 @@ suite('Requests', function() {
   });
 
   test('stash with scraping function', function() {
-    return sequence(
+    return sequentially(
       req
         .POST('/reflect', {foo: 'bar'})
         .stash('result', function(body) {
@@ -199,18 +199,18 @@ suite('Requests', function() {
 });
 
 suite('Control Flow', function() {
-  test('sequence', function() {
+  test('sequentially', function() {
 
-    return sequence(
+    return sequentially(
       function(ctx) {ctx.counter = 1; return ctx;},
       function(ctx) {ctx.counter++; return ctx;},
       function(ctx) {expect(ctx.counter).to.equal(2); }
     )(new driver.Context());
   });
 
-  test('sequence with array', function() {
+  test('sequentially with array', function() {
 
-    return sequence([
+    return sequentially([
       function(ctx) {ctx.counter = 1; return ctx;},
       function(ctx) {ctx.counter++; return ctx;},
       function(ctx) {expect(ctx.counter).to.equal(2); }
@@ -219,20 +219,20 @@ suite('Control Flow', function() {
 
   test('steps', function() {
 
-    return sequence(
+    return sequentially(
       step('Do something',
           function(ctx) {ctx.counter = 1; return ctx;}
       ),
       step('Then do this',
-        sequence(
+        sequentially(
           function(ctx) {ctx.counter++; return ctx;},
           function(ctx) {expect(ctx.counter).to.equal(2); }))
     )(new driver.Context());
   });
 
-  test('concurrence', function() {
+  test('concurrently', function() {
     var val = null;
-    return concurrence(
+    return concurrently(
       function(ctx) {
         return Promise.delay(20)
         .then(function() { val = 'delayed'; return ctx; });
@@ -248,9 +248,9 @@ suite('Control Flow', function() {
     )(new driver.Context());
   });
 
-  test('concurrence with array', function() {
+  test('concurrently with array', function() {
 
-    return concurrence([
+    return concurrently([
       function(ctx) { return ctx; },
       function(ctx) { return ctx; }
     ])(new driver.Context());
@@ -273,7 +273,7 @@ suite('Control Flow', function() {
 
     var tries = 0;
     var start = Date.now();
-    return sequence(
+    return sequentially(
       wait(10),
       function() {
         expect(Date.now() - start).is.gte(10);
