@@ -77,12 +77,10 @@ function concurrently() {
   _validate(_.all(cmds, _.isFunction), 'Commands must be functions: ' + cmds);
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
-      return cmd(ctx.clone());
+      return cmd(ctx.branch());
     })
-    .then(function(ctxs) {
-      var newCtx = context.Context.merge(ctxs);
-      newCtx.setCurrentActor(ctx.currentActor());
-      return newCtx;
+    .then(function() {
+      return ctx;
     });
   };
 }
@@ -101,7 +99,12 @@ function step(title /*, cmds* */) {
   var cmds = _conformCommands(_.rest(arguments));
   return function(ctx) {
     ctx.emit('step', title);
-    return _sequence(ctx, cmds);
+    ctx.stack.push(title);
+    return _sequence(ctx, cmds)
+    .then(function(ctx) {
+      if (ctx) ctx.stack.pop();
+      return ctx;
+    });
   };
 }
 
