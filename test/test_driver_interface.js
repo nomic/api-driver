@@ -3,57 +3,29 @@
 /*jshint expr: true*/
 var chai = require('chai'),
   expect = chai.expect,
-  assert = chai.assert,
   Promise = require('bluebird'),
   driver = require('../index'),
-  ContextError = driver.ContextError,
+  request = require('request'),
   ExpectationError = driver.ExpectationError,
   step = driver.step, as = driver.as, req = driver.req,
   sequentially = driver.sequentially, concurrently = driver.concurrently,
-  eventually = driver.eventually, introduce = driver.introduce,
-  wait = driver.wait;
+  eventually = driver.eventually, wait = driver.wait;
 
 
 suite('Actors', function() {
-  test('introduce', function() {
-    var ctx = new driver.Context();
-    expect(function() {
-      ctx.jarFor('mia');
-    }).to.throw(driver.ContextError);
-
-    ctx = introduce('mia')(new driver.Context());
-    assertIsACookieJar( ctx.jarFor('mia') );
-  });
-
-  test('multiple introductions', function() {
-    return sequentially(
-      introduce('mia'),
-      introduce('ella')
-    )(new driver.Context())
-    .then(function(ctx) {
-      assertIsACookieJar( ctx.jarFor('mia') );
-      assertIsACookieJar( ctx.jarFor('ella') );
-      expect(ctx.currentActor()).to.eql('ella');
-    });
-  });
 
   test('as', function() {
     return sequentially(
-      introduce('mia', 'ella'),
-      function(ctx) {
-        expect(ctx.currentActor()).to.eql('ella');
-        return ctx;
-      },
       as('mia'),
       function(ctx) {
         expect(ctx.currentActor()).to.eql('mia');
+        expect(ctx.jarForCurrentActor(request.jar)).to.be.a('Object');
       }
     )(new driver.Context());
   });
 
   test('as, nested', function() {
-    return sequentially(
-      introduce('ella', 'mia'),
+    return as('mia',
       as('ella',
         function(ctx) {
           expect(ctx.currentActor()).to.eql('ella');
@@ -66,7 +38,7 @@ suite('Actors', function() {
       }
     )(new driver.Context())
     .then(function(ctx) {
-      expect(ctx.currentActor()).to.eql('mia');
+      expect(ctx.currentActor()).to.equal(null);
     });
   });
 

@@ -1,12 +1,10 @@
 'use strict';
 var _ = require('lodash'),
-    request = require('request'),
     Promise = require('bluebird'),
     context = require('./lib/context');
 
 module.exports = _.extend({
   run: run,
-  introduce: introduce,
   as: as,
   sequentially: sequentially,
   concurrently: concurrently,
@@ -30,23 +28,12 @@ function run(/*[context], fn*/) {
   return Promise.cast(ctx).then(sequentially(cmds));
 }
 
-function introduce(/* aliases* */) {
-  var aliases = _.toArray(arguments);
-  return function(ctx) {
-    _.each(aliases, function(alias) {
-      ctx.addActor(alias, request.jar());
-    });
-    ctx.setCurrentActor(aliases.slice(-1)[0]);
-    return ctx;
-  };
-}
-
 function as(alias /*, cmds* */) {
   var cmds = _conformCommands(_.rest(arguments));
   if (cmds.length) {
     return function(ctx) {
       var prevActor = ctx.currentActor();
-      ctx.setCurrentActor(alias, request.jar);
+      ctx.setCurrentActor(alias);
       return _sequence(ctx, cmds)
       .then(function(ctx) {
         ctx.setCurrentActor(prevActor);

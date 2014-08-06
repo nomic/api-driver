@@ -23,12 +23,11 @@
   },
   "homepage": "https://github.com/nomic/api-driver",
   "dependencies": {
-   "bluebird": "2.1.3",
+    "bluebird": "2.1.3",
     "form-data": "0.1.0",
     "json-diff": "0.3.1",
-    "request": "2.36.0",
-    "underscore": "1.5.1",
-    "lodash": "2.4.1"
+    "lodash": "2.4.1",
+    "request": "2.39.0"
   },
   "devDependencies": {
     "mocha": "1.20.1",
