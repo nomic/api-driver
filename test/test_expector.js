@@ -21,12 +21,6 @@ suite('checkJSONExpresion', function() {
     assert( !cje({a: "$int"}, {a: 1.5}) );
   });
 
-  test('$not-exists', function() {
-    assert(  cje({a: "$not-exists"}, {}) );
-    assert( !cje({a: "$not-exists"}, {a: 1}) );
-  });
-
-
   test('$unordered', function() {
     assert(  cje({$unordered: [1, 2]}, [1, 2]) );
     assert(  cje({$unordered: [1, 2]}, [2, 1]) );
@@ -73,6 +67,13 @@ suite('checkJSONExpresion', function() {
     assert( !cje({a: {$lte: 10}}, {a: 11}) );
     assert(  cje({a: {$lte: 10}}, {a: 10}) );
     assert(  cje({a: {$lte: 10}}, {a: 9})) ;
+  });
+
+  test('$not', function() {
+    assert(  cje({a: {$not: "$exists"}}, {}) );
+    assert( !cje({a: {$not: "$exists"}}, {a: 1}) );
+    assert(  cje({$not: {$unordered: [1, 2]}}, [1, 2, 3]) );
+    assert( !cje({$not: {$unordered: [1, 2]}}, [2, 1]) );
   });
 
 });
