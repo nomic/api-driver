@@ -27,7 +27,8 @@
     "form-data": "0.1.0",
     "json-diff": "0.3.1",
     "lodash": "2.4.1",
-    "request": "2.39.0"
+    "request": "2.39.0",
+    "tough-cookie": "0.12.1"
   },
   "devDependencies": {
     "mocha": "1.20.1",

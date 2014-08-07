@@ -117,9 +117,9 @@ suite('Requests', function() {
   test('expectation on fn', function() {
     return req
       .POST('/reflect', {foo: 'bar'})
-      .expect(function(res) {
+      .expect(function(body, res) {
         expect(res.statusCode).to.equal(200);
-        expect(res.body).to.eql({foo: 'bar'});
+        expect(res.body).to.eql(body).to.eql({foo: 'bar'});
       })
       (new driver.Context());
   });
@@ -127,9 +127,9 @@ suite('Requests', function() {
   test('expectation on status and fn', function() {
     return req
       .POST('/reflect', {foo: 'bar'})
-      .expect(200, function(res) {
+      .expect(200, function(body, res) {
         expect(res.statusCode).to.equal(200);
-        expect(res.body).to.eql({foo: 'bar'});
+        expect(res.body).to.eql(body).to.eql({foo: 'bar'});
       })
       (new driver.Context());
   });
@@ -159,7 +159,9 @@ suite('Requests', function() {
     return sequentially(
       req
         .POST('/reflect', {foo: 'bar'})
-        .stash('result', function(body) {
+        .stash('result', function(body, res) {
+          expect(res.statusCode).to.equal(200);
+          expect(res.body).to.eql(body);
           return body.foo;
         }),
       req
