@@ -72,15 +72,6 @@ function concurrently() {
   };
 }
 
-function _sequence(ctx, cmds) {
-  return cmds.length
-    ? Promise.try(cmds.slice(0,1)[0], ctx)
-      .then(function(ctx) {
-        return _sequence(ctx, cmds.slice(1));
-      })
-    : Promise.resolve(ctx);
-}
-
 function step(title /*, cmds* */) {
   _validate(title, 'Invalid title: ' + title);
   var cmds = _conformCommands(_.rest(arguments));
@@ -100,14 +91,6 @@ function stash(key, val) {
     ctx.stash.set(key, val);
     return ctx;
   };
-}
-
-function _validate(condition, msg) {
-  if (! condition) {
-    var err = new TypeError(msg);
-    Error.captureStackTrace(err, _validate);
-    throw err;
-  }
 }
 
 function eventually(fn, opts) {
@@ -134,6 +117,23 @@ function wait(millis) {
   };
 }
 
+function _sequence(ctx, cmds) {
+  return cmds.length
+    ? Promise.try(cmds.slice(0,1)[0], ctx)
+      .then(function(ctx) {
+        return _sequence(ctx, cmds.slice(1));
+      })
+    : Promise.resolve(ctx);
+}
+
+function _validate(condition, msg) {
+  if (! condition) {
+    var err = new TypeError(msg);
+    Error.captureStackTrace(err, _validate);
+    throw err;
+  }
+}
+
 function _untilResolved(fn, delay, timeout, report, elapsed) {
   return Promise.try(fn)
   .then(null, function(err) {
@@ -153,17 +153,3 @@ function _conformCommands(cmds) {
   );
   return cmds;
 }
-
-function _assert(truthy, message) {
-  if (! truthy) {
-    throw new DriverError(message);
-  }
-}
-
-function DriverError(message) {
-  this.message = message;
-  this.name = "DrivrError";
-  Error.captureStackTrace(this, DriverError);
-}
-DriverError.prototype = Object.create(Error.prototype);
-DriverError.prototype.constructor = DriverError;
