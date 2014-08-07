@@ -97,7 +97,7 @@ function step(title /*, cmds* */) {
 
 function stash(key, val) {
   return function(ctx) {
-    ctx.stash(key, val);
+    ctx.stash.set(key, val);
     return ctx;
   };
 }
