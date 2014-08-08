@@ -40,7 +40,10 @@ suite("Driver Basics", function() {
       as('ella',
         req
           .POST('/reflect/cookie', {name: 'chocolate', value: 'chip'})
-          .expect(204),
+          .expect(204, function(body, res) {
+            expect(res.cookies[0]).to.have.property('key', 'chocolate');
+            expect(res.cookies[0]).to.have.property('value', 'chip');
+          }),
         function(ctx) {
           var cookies = ctx.jarForCurrentActor(request.jar)
             .getCookies(endpoint);
