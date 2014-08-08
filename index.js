@@ -1,7 +1,8 @@
 'use strict';
 var _ = require('lodash'),
     Promise = require('bluebird'),
-    context = require('./lib/context');
+    context = require('./lib/context'),
+    helper = require('./lib/helper');
 
 module.exports = _.extend({
   run: run,
@@ -61,7 +62,7 @@ function pass() {
 
 function concurrently() {
   var cmds = _conformCommands(_.toArray(arguments));
-  _validate(_.all(cmds, _.isFunction), 'Commands must be functions: ' + cmds);
+  helper.validate(_.all(cmds, _.isFunction), 'Commands must be functions: ' + cmds);
   return function(ctx) {
     return Promise.map(cmds, function(cmd) {
       return cmd(ctx.branch());
@@ -73,7 +74,7 @@ function concurrently() {
 }
 
 function step(title /*, cmds* */) {
-  _validate(title, 'Invalid title: ' + title);
+  helper.validate(title, 'Invalid title: ' + title);
   var cmds = _conformCommands(_.rest(arguments));
   return function(ctx) {
     ctx.emit('step', title);
@@ -126,14 +127,6 @@ function _sequence(ctx, cmds) {
     : Promise.resolve(ctx);
 }
 
-function _validate(condition, msg) {
-  if (! condition) {
-    var err = new TypeError(msg);
-    Error.captureStackTrace(err, _validate);
-    throw err;
-  }
-}
-
 function _untilResolved(fn, delay, timeout, report, elapsed) {
   return Promise.try(fn)
   .then(null, function(err) {
@@ -147,7 +140,7 @@ function _untilResolved(fn, delay, timeout, report, elapsed) {
 
 function _conformCommands(cmds) {
   cmds = _.flatten(cmds);
-  _validate(
+  helper.validate(
     _.all(cmds, _.isFunction),
     'Driver commands must be functions: [' + cmds + ']'
   );
